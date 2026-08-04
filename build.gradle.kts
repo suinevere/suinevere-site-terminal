@@ -1,3 +1,5 @@
+import org.gradle.language.jvm.tasks.ProcessResources
+
 plugins {
 	kotlin("jvm") version "2.3.21"
 	kotlin("plugin.spring") version "2.3.21"
@@ -40,4 +42,34 @@ kotlin {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+}
+
+val frontendDir = layout.projectDirectory.dir("frontend")
+val npmCommand = if (System.getProperty("os.name").startsWith("Windows")) "npm.cmd" else "npm"
+
+val npmInstall by tasks.registering(Exec::class) {
+	description = "Installs frontend dependencies from the lockfile."
+	workingDir = frontendDir.asFile
+	commandLine(npmCommand, "ci")
+	inputs.file(frontendDir.file("package-lock.json"))
+	outputs.dir(frontendDir.dir("node_modules"))
+}
+
+val npmBuild by tasks.registering(Exec::class) {
+	description = "Builds the production frontend bundle."
+	dependsOn(npmInstall)
+	workingDir = frontendDir.asFile
+	commandLine(npmCommand, "run", "build")
+	inputs.dir(frontendDir.dir("src"))
+	inputs.file(frontendDir.file("package.json"))
+	inputs.file(frontendDir.file("vite.config.ts"))
+	inputs.file(frontendDir.file("index.html"))
+	outputs.dir(frontendDir.dir("dist"))
+}
+
+tasks.named<ProcessResources>("processResources") {
+	dependsOn(npmBuild)
+	from(frontendDir.dir("dist")) {
+		into("static")
+	}
 }
