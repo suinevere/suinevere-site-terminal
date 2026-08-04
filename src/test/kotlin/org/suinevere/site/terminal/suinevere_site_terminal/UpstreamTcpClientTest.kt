@@ -9,6 +9,7 @@ package org.suinevere.site.terminal.suinevere_site_terminal
 
 import org.junit.jupiter.api.Test
 import reactor.core.publisher.Flux
+import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import java.time.Duration
 
@@ -18,13 +19,19 @@ class UpstreamTcpClientTest {
 		TerminalProperties(host = "127.0.0.1", port = port, connectTimeout = Duration.ofSeconds(5)),
 	)
 
+	private fun Flux<String>.accumulatedUntil(expected: String): Mono<String> =
+		scan("") { acc, chunk -> acc + chunk }
+			.filter { it == expected }
+			.next()
+
 	@Test
 	fun `receives the upstream banner`() {
 		val server = EchoTcpServer.startEchoing("Hello sailor!\r\n>")
 		try {
-			StepVerifier.create(clientFor(server.port()).open(Flux.never()).take(1))
+			StepVerifier.create(clientFor(server.port()).open(Flux.never()).accumulatedUntil("Hello sailor!\r\n>"))
 				.expectNext("Hello sailor!\r\n>")
-				.verifyComplete()
+				.expectComplete()
+				.verify(Duration.ofSeconds(10))
 		} finally {
 			server.disposeNow()
 		}
@@ -34,14 +41,10 @@ class UpstreamTcpClientTest {
 	fun `sends a typed line upstream and returns the reply`() {
 		val server = EchoTcpServer.startEchoing("> ")
 		try {
-			val output = clientFor(server.port())
-				.open(Flux.just("suinevere\r\n"))
-				.take(2)
-				.reduce("") { acc, chunk -> acc + chunk }
-
-			StepVerifier.create(output)
+			StepVerifier.create(clientFor(server.port()).open(Flux.just("suinevere\r\n")).accumulatedUntil("> suinevere\r\n"))
 				.expectNext("> suinevere\r\n")
-				.verifyComplete()
+				.expectComplete()
+				.verify(Duration.ofSeconds(10))
 		} finally {
 			server.disposeNow()
 		}
@@ -51,14 +54,10 @@ class UpstreamTcpClientTest {
 	fun `preserves high bytes instead of corrupting them`() {
 		val server = EchoTcpServer.startEchoing("")
 		try {
-			val output = clientFor(server.port())
-				.open(Flux.just("éÿ\r\n"))
-				.filter { it.isNotEmpty() }
-				.take(1)
-
-			StepVerifier.create(output)
+			StepVerifier.create(clientFor(server.port()).open(Flux.just("éÿ\r\n")).accumulatedUntil("éÿ\r\n"))
 				.expectNext("éÿ\r\n")
-				.verifyComplete()
+				.expectComplete()
+				.verify(Duration.ofSeconds(10))
 		} finally {
 			server.disposeNow()
 		}
