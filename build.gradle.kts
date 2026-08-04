@@ -62,6 +62,8 @@ val npmBuild by tasks.registering(Exec::class) {
 	commandLine(npmCommand, "run", "build")
 	inputs.dir(frontendDir.dir("src"))
 	inputs.file(frontendDir.file("package.json"))
+	inputs.file(frontendDir.file("package-lock.json"))
+	inputs.file(frontendDir.file("tsconfig.json"))
 	inputs.file(frontendDir.file("vite.config.ts"))
 	inputs.file(frontendDir.file("index.html"))
 	outputs.dir(frontendDir.dir("dist"))
