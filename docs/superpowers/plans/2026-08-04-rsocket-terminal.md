@@ -59,7 +59,8 @@
 | `EchoTcpServer.kt` | Test fixture: local upstream on an ephemeral port. |
 | `UpstreamTcpClientTest.kt` | Byte fidelity, round-trip, disconnect, connect failure. |
 | `TerminalControllerTest.kt` | RSocket channel round-trip and sentinel filtering. |
-| `TerminalResilienceTest.kt` | Unreachable upstream and session cap. |
+| `TerminalResilienceTest.kt` | Unreachable upstream surfaces as terminal text. |
+| `TerminalSessionCapTest.kt` | Concurrent session cap rejects the extra session. |
 
 **Frontend** — `frontend/`
 
@@ -798,6 +799,9 @@ Failures must reach the terminal as readable text, never as an RSocket error fra
 **Files:**
 - Modify: `src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalController.kt`
 - Test: `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalResilienceTest.kt`
+- Test: `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalSessionCapTest.kt`
+
+The two failure modes need opposite upstreams — a dead port to force a connect failure, a live one to hold a session slot open — so they are two classes, not two methods.
 
 **Interfaces:**
 - Consumes: `TerminalController.session` from Task 4, `unreachableMessage`, `BUSY_MESSAGE`, `DISCONNECTED_MESSAGE` from Task 4, `TerminalProperties.maxSessions` from Task 2.
@@ -835,7 +839,6 @@ import java.time.Duration
 		"terminal.upstream.host=127.0.0.1",
 		"terminal.upstream.port=1",
 		"terminal.upstream.connect-timeout=2s",
-		"terminal.upstream.max-sessions=1",
 	],
 )
 class TerminalResilienceTest {
@@ -858,28 +861,99 @@ class TerminalResilienceTest {
 			.expectComplete()
 			.verify(Duration.ofSeconds(20))
 	}
+}
+```
+
+Now create `TerminalSessionCapTest.kt`. The first session must be proven connected before the second opens, otherwise the cap check races the channel setup — so the test waits on a latch fed by the upstream banner, and holds the subscription open for the duration:
+
+```kotlin
+/*----------------------
+ | TerminalSessionCapTest.kt
+ | Description: Verifies the concurrent session cap rejects an extra session with readable terminal text.
+ | Author: suinevere
+ | Dependencies: spring-boot-starter-test, reactor-test, EchoTcpServer
+ | Globals: N/A
+ ----------------------*/
+package org.suinevere.site.terminal.suinevere_site_terminal
+
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Test
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.messaging.rsocket.RSocketRequester
+import org.springframework.messaging.rsocket.retrieveFlux
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.context.TestPropertySource
+import org.springframework.util.MimeTypeUtils
+import reactor.core.Disposable
+import reactor.core.publisher.Flux
+import reactor.test.StepVerifier
+import java.net.URI
+import java.time.Duration
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.test.assertTrue
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@TestPropertySource(properties = ["terminal.upstream.max-sessions=1"])
+class TerminalSessionCapTest {
+
+	@LocalServerPort
+	private var port: Int = 0
+
+	private fun openSession(): Flux<String> =
+		RSocketRequester.builder()
+			.dataMimeType(MimeTypeUtils.TEXT_PLAIN)
+			.websocket(URI.create("ws://localhost:$port/rsocket"))
+			.route("terminal.session")
+			.data(Flux.just(INIT_SENTINEL), String::class.java)
+			.retrieveFlux<String>()
 
 	@Test
 	fun `reports server busy once the session cap is reached`() {
-		val first = openSession().subscribe()
+		val connected = CountDownLatch(1)
+		val holder: Disposable = openSession()
+			.doOnNext { connected.countDown() }
+			.subscribe()
+
 		try {
+			assertTrue(connected.await(15, TimeUnit.SECONDS), "the first session never reached upstream")
+
 			StepVerifier.create(openSession())
-				.expectNextMatches { it == BUSY_MESSAGE || it == unreachableMessage("127.0.0.1", 1) }
+				.expectNext(BUSY_MESSAGE)
 				.thenCancel()
-				.verify(Duration.ofSeconds(20))
+				.verify(Duration.ofSeconds(15))
 		} finally {
-			first.dispose()
+			holder.dispose()
+		}
+	}
+
+	companion object {
+		private val upstream = EchoTcpServer.startEchoing("> ")
+
+		@JvmStatic
+		@DynamicPropertySource
+		fun upstreamEndpoint(registry: DynamicPropertyRegistry) {
+			registry.add("terminal.upstream.host") { "127.0.0.1" }
+			registry.add("terminal.upstream.port") { upstream.port() }
+		}
+
+		@JvmStatic
+		@AfterAll
+		fun stopUpstream() {
+			upstream.disposeNow()
 		}
 	}
 }
 ```
 
-The cap test accepts either message because the first session releases its slot as soon as its own connect fails, so the race is inherent. What it pins is the requirement that never fails silently and never throws an RSocket error frame.
+`EchoTcpServer.startEchoing` never completes its outbound, so the first session keeps its slot for the whole test. The assertion is a single exact value — remove the cap and this test fails.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `./gradlew test --tests '*TerminalResilienceTest*'`
-Expected: FAIL — the channel errors instead of emitting `[unable to reach 127.0.0.1:1]`.
+Run: `./gradlew test --tests '*TerminalResilienceTest*' --tests '*TerminalSessionCapTest*'`
+Expected: FAIL — the channel errors instead of emitting `[unable to reach 127.0.0.1:1]`, and no cap is enforced.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -935,7 +1009,7 @@ class TerminalController(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `./gradlew test --tests '*TerminalResilienceTest*'`
+Run: `./gradlew test --tests '*TerminalResilienceTest*' --tests '*TerminalSessionCapTest*'`
 Expected: both PASS.
 
 - [ ] **Step 5: Run the whole backend suite**
