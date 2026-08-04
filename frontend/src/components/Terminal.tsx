@@ -88,6 +88,9 @@ export default function Terminal() {
         session = opened
       })
       .catch((error: Error) => {
+        if (disposed) {
+          return
+        }
         term.write(`\r\n[connection lost: ${error.message}]\r\n`)
         setLive(false)
       })
