@@ -1,3 +1,10 @@
+// ----------------------
+// | tsconfig.json
+// | Description: TypeScript compiler configuration for the terminal frontend.
+// | Author: suinevere
+// | Dependencies: typescript, vitest
+// | Globals: N/A
+// ----------------------
 {
   "compilerOptions": {
     "target": "ES2022",

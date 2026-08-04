@@ -1,3 +1,10 @@
+/*----------------------
+ | vite.config.ts
+ | Description: Build, dev-server proxy, and vitest configuration for the terminal frontend.
+ | Author: suinevere
+ | Dependencies: vite, vitest, @vitejs/plugin-react
+ | Globals: N/A
+ ----------------------*/
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 

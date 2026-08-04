@@ -27,7 +27,7 @@ const ESCAPE = '\x1b'
  | Dependencies: N/A
  | Globals: N/A
  | Params: handlers -- onEcho writes to the terminal, onLine receives each completed line without its newline
- | Returns: LineEditor with handleInput for raw terminal data and reset to drop the buffer
+ | Returns: LineEditor with handleInput for raw terminal data
  ----------------------*/
 export function createLineEditor(handlers: LineEditorHandlers): LineEditor {
   let buffer = ''

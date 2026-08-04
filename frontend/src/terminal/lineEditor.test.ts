@@ -76,9 +76,10 @@ describe('createLineEditor', () => {
   })
 
   it('handles a pasted multi-character chunk', () => {
-    const { editor, lines } = harness()
+    const { editor, echoed, lines } = harness()
     editor.handleInput('suinevere')
     editor.handleInput('\r')
+    expect(echoed).toEqual(['s', 'u', 'i', 'n', 'e', 'v', 'e', 'r', 'e', '\r\n'])
     expect(lines).toEqual(['suinevere'])
   })
 })
