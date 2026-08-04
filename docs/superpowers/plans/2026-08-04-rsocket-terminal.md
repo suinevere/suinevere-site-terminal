@@ -749,8 +749,10 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.util.MimeTypeUtils
 import reactor.core.publisher.Flux
+import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import java.net.URI
+import java.time.Duration
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TerminalControllerTest {
@@ -763,18 +765,23 @@ class TerminalControllerTest {
 			.dataMimeType(MimeTypeUtils.TEXT_PLAIN)
 			.websocket(URI.create("ws://localhost:$port/rsocket"))
 
+	private fun Flux<String>.accumulatedUntil(expected: String): Mono<String> =
+		scan("") { acc, chunk -> acc + chunk }
+			.filter { it == expected }
+			.next()
+
 	@Test
 	fun `round-trips a typed line through the channel`() {
 		val output = requester()
 			.route("terminal.session")
 			.data(Flux.just(INIT_SENTINEL, "suinevere\r\n"), String::class.java)
 			.retrieveFlux<String>()
-			.take(2)
-			.reduce("") { acc, chunk -> acc + chunk }
+			.accumulatedUntil("> suinevere\r\n")
 
 		StepVerifier.create(output)
 			.expectNext("> suinevere\r\n")
-			.verifyComplete()
+			.expectComplete()
+			.verify(Duration.ofSeconds(15))
 	}
 
 	@Test
@@ -783,11 +790,12 @@ class TerminalControllerTest {
 			.route("terminal.session")
 			.data(Flux.just(INIT_SENTINEL), String::class.java)
 			.retrieveFlux<String>()
-			.take(1)
+			.accumulatedUntil("> ")
 
 		StepVerifier.create(output)
 			.expectNext("> ")
-			.verifyComplete()
+			.expectComplete()
+			.verify(Duration.ofSeconds(15))
 	}
 
 	companion object {
@@ -809,7 +817,9 @@ class TerminalControllerTest {
 }
 ```
 
-The second test proves the sentinel is filtered: the echo server returns everything it receives, so if the sentinel reached upstream the first chunk would contain it rather than just the banner.
+The second test proves the sentinel is filtered: the echo server returns everything it receives, so if the sentinel reached upstream the accumulated text would contain it rather than just the banner, and the filter would never match.
+
+`accumulatedUntil` is the same helper Task 3 uses, and for the same reason: how many payloads the upstream output arrives in depends on TCP segmentation, so asserting on a chunk count would make transport behavior part of the contract and could hang the build on a coalesced read. Accumulating until the text matches asserts content, and the explicit `verify` timeout turns a genuine failure into a timeout rather than an indefinite hang.
 
 - [ ] **Step 3: Run test to verify it fails**
 
