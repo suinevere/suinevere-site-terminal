@@ -753,6 +753,7 @@ import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import java.net.URI
 import java.time.Duration
+import kotlin.test.assertEquals
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TerminalControllerTest {
@@ -788,12 +789,14 @@ class TerminalControllerTest {
 	fun `never forwards the handshake sentinel upstream`() {
 		val output = requester()
 			.route("terminal.session")
-			.data(Flux.just(INIT_SENTINEL), String::class.java)
+			.data(Flux.just(INIT_SENTINEL, "suinevere\r\n"), String::class.java)
 			.retrieveFlux<String>()
-			.accumulatedUntil("> ")
+			.scan("") { acc, chunk -> acc + chunk }
+			.filter { it.endsWith("suinevere\r\n") }
+			.next()
 
 		StepVerifier.create(output)
-			.expectNext("> ")
+			.assertNext { assertEquals("> suinevere\r\n", it) }
 			.expectComplete()
 			.verify(Duration.ofSeconds(15))
 	}
@@ -817,7 +820,7 @@ class TerminalControllerTest {
 }
 ```
 
-The second test proves the sentinel is filtered: the echo server returns everything it receives, so if the sentinel reached upstream the accumulated text would contain it rather than just the banner, and the filter would never match.
+The second test proves the sentinel is filtered, and its shape matters. It cannot use `accumulatedUntil`, because that stops at the *first* accumulated value matching — which would be the banner, arriving before any sentinel echo could, so the test would pass whether or not the filter existed. Instead it waits until the accumulated text ends with the typed line, then asserts exact equality. A leaked sentinel would leave the sentinel's own characters sitting between the prompt and the typed line in the accumulated text. That text still ends with the typed line, so it still reaches the assertion — where it fails with a precise diff rather than an ambiguous timeout.
 
 `accumulatedUntil` is the same helper Task 3 uses, and for the same reason: how many payloads the upstream output arrives in depends on TCP segmentation, so asserting on a chunk count would make transport behavior part of the contract and could hang the build on a coalesced read. Accumulating until the text matches asserts content, and the explicit `verify` timeout turns a genuine failure into a timeout rather than an indefinite hang.
 
