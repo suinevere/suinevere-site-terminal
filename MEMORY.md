@@ -122,3 +122,39 @@ Spring bridge (same host) ──────────────────
 If the Spring bridge runs on this same box it connects straight to loopback and never needs
 the handshake, so no Kotlin change is required. If it runs elsewhere, it must send the
 preamble itself.
+
+## nginx notes
+
+**`stream` is a sibling of `http`, not a child.** It cannot live in `sites-enabled/` or
+`conf.d/`, because both are included from inside the `http` block. Put the include at top
+level of `nginx.conf`:
+
+```nginx
+stream {
+    include /etc/nginx/streams-enabled/*.conf;
+}
+```
+
+On Ubuntu the stream module is a separate package — `libnginx-mod-stream`, a dependency of
+`nginx-full` but not `nginx-light`. Check `/etc/nginx/modules-enabled/` before debugging
+config syntax.
+
+**The catch-all redirect will eat `/rsocket`.** Both vhosts for `suinevere.duckdns.org` end
+in `location / { return 301 ... suin.uk ... }`, so a WebSocket upgrade to `/rsocket` gets
+redirected away and the terminal never connects. It needs an explicit `location /rsocket`
+with `Upgrade`/`Connection` headers ahead of the catch-all, or to be served from the
+`suin.uk` vhost instead.
+
+**Port 80 redirects to `http://suin.uk`, not `https://`** — a downgrade that leaves the
+first request to the destination in cleartext.
+
+## Ordering when moving port 23 behind nginx
+
+nginx cannot bind 23 while Docker holds it, so the outage window is unavoidable but should
+be seconds:
+
+```bash
+sudo nginx -t                  # syntax only, does not bind — must pass first
+docker compose up -d           # frees 23, starts authproxy   <- outage begins
+sudo systemctl reload nginx    # binds 23                     <- outage ends
+```
