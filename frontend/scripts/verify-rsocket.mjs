@@ -2,7 +2,7 @@
  | verify-rsocket.mjs
  | Description: Proves the RSocket client library round-trips against a running backend.
  | Author: suinevere
- | Dependencies: @rsocket/core, @rsocket/websocket-client, @rsocket/composite-metadata, ws
+ | Dependencies: @rsocket/core, @rsocket/websocket-client, @rsocket/composite-metadata
  | Globals: N/A
  ----------------------*/
 import { Buffer } from 'buffer'
@@ -43,7 +43,7 @@ let received = ''
 
 const requester = rsocket.requestChannel(
   {
-    data: Buffer.from('\u0000INIT', 'latin1'),
+    data: Buffer.from('\u0000INIT', 'utf8'),
     metadata: encodeCompositeMetadata([
       [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, encodeRoute('terminal.session')],
     ]),
@@ -53,8 +53,8 @@ const requester = rsocket.requestChannel(
   {
     onNext: (payload) => {
       if (payload.data) {
-        received += Buffer.from(payload.data).toString('latin1')
-        process.stdout.write(Buffer.from(payload.data).toString('latin1'))
+        received += Buffer.from(payload.data).toString('utf8')
+        process.stdout.write(Buffer.from(payload.data).toString('utf8'))
       }
     },
     onError: (error) => {
@@ -74,7 +74,7 @@ setTimeout(() => {
     process.exit(1)
   }
   console.log('\n\nOK: banner received, sending a bare Enter')
-  requester.onNext({ data: Buffer.from('\r\n', 'latin1') }, false)
+  requester.onNext({ data: Buffer.from('\r\n', 'utf8') }, false)
   setTimeout(() => {
     if (!received.includes("What's your name")) {
       console.error('\nFAIL: no response to Enter')

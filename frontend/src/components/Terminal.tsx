@@ -75,6 +75,7 @@ export default function Terminal() {
       url: sessionUrl(),
       onData: (text) => term.write(text),
       onClose: () => {
+        session = null
         if (!disposed) {
           setLive(false)
         }

@@ -69,6 +69,22 @@ class TerminalControllerTest {
 			.verify(Duration.ofSeconds(15))
 	}
 
+	@Test
+	fun `preserves high bytes across the whole bridge`() {
+		val output = requester()
+			.route("terminal.session")
+			.data(Flux.just(INIT_SENTINEL, "éÿ\r\n"), String::class.java)
+			.retrieveFlux<String>()
+			.scan("") { acc, chunk -> acc + chunk }
+			.filter { it.endsWith("\r\n") }
+			.next()
+
+		StepVerifier.create(output)
+			.assertNext { assertEquals("> éÿ\r\n", it) }
+			.expectComplete()
+			.verify(Duration.ofSeconds(15))
+	}
+
 	companion object {
 		private val upstream = EchoTcpServer.startEchoing("> ")
 

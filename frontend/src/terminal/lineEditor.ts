@@ -15,9 +15,45 @@ export type LineEditor = {
   handleInput: (data: string) => void
 }
 
+/*----------------------
+ | ENTER
+ | Description: Carriage return, which XTerm sends for the Enter key and which flushes the buffered line.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const ENTER = '\r'
+/*----------------------
+ | BACKSPACE
+ | Description: DEL, which is what XTerm actually sends for the Backspace key rather than backspace itself.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const BACKSPACE = '\x7f'
+/*----------------------
+ | CTRL_C
+ | Description: End-of-text, which discards the buffered line without sending it upstream.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const CTRL_C = '\x03'
+/*----------------------
+ | ESCAPE
+ | Description: Prefix of the sequences arrow and function keys arrive as; such chunks are dropped whole so their letters are never echoed as typed input.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const ESCAPE = '\x1b'
 
 /*----------------------

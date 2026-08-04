@@ -1,6 +1,7 @@
 /*----------------------
  | terminalSession.ts
- | Description: Opens an RSocket channel over WebSocket and exposes it as a line-oriented terminal session.
+ | Description: Opens an RSocket channel over WebSocket and exposes it as a line-oriented terminal session;
+ |              payloads are UTF-8 because Spring's text/plain codecs are, and ISO-8859-1 stays on the TCP leg.
  | Author: suinevere
  | Dependencies: @rsocket/core, @rsocket/websocket-client, @rsocket/composite-metadata, buffer
  | Globals: N/A
@@ -114,10 +115,11 @@ export async function openTerminalSession(
   })
 
   const rsocket = await connector.connect()
+  let closed = false
 
   const requester = rsocket.requestChannel(
     {
-      data: Buffer.from(INIT_SENTINEL, 'latin1'),
+      data: Buffer.from(INIT_SENTINEL, 'utf8'),
       metadata: routeMetadata(ROUTE),
     },
     REQUEST_N,
@@ -125,11 +127,23 @@ export async function openTerminalSession(
     {
       onNext: (payload) => {
         if (payload.data) {
-          options.onData(Buffer.from(payload.data).toString('latin1'))
+          options.onData(Buffer.from(payload.data).toString('utf8'))
         }
       },
-      onError: (error) => options.onClose(error.message),
-      onComplete: () => options.onClose('closed'),
+      onError: (error) => {
+        if (!closed) {
+          closed = true
+          rsocket.close()
+        }
+        options.onClose(error.message)
+      },
+      onComplete: () => {
+        if (!closed) {
+          closed = true
+          rsocket.close()
+        }
+        options.onClose('closed')
+      },
       onExtension: () => {},
       request: () => {},
       cancel: () => {},
@@ -138,9 +152,13 @@ export async function openTerminalSession(
 
   return {
     send: (line: string): void => {
-      requester.onNext({ data: Buffer.from(line, 'latin1') }, false)
+      requester.onNext({ data: Buffer.from(line, 'utf8') }, false)
     },
     close: (): void => {
+      if (closed) {
+        return
+      }
+      closed = true
       requester.cancel()
       rsocket.close()
     },

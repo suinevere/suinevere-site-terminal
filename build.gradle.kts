@@ -69,6 +69,23 @@ val npmBuild by tasks.registering(Exec::class) {
 	outputs.dir(frontendDir.dir("dist"))
 }
 
+val npmTest by tasks.registering(Exec::class) {
+	description = "Runs the frontend unit tests."
+	dependsOn(npmInstall)
+	workingDir = frontendDir.asFile
+	commandLine(npmCommand, "test")
+	inputs.dir(frontendDir.dir("src"))
+	inputs.file(frontendDir.file("package.json"))
+	inputs.file(frontendDir.file("package-lock.json"))
+	inputs.file(frontendDir.file("tsconfig.json"))
+	inputs.file(frontendDir.file("vite.config.ts"))
+	outputs.upToDateWhen { false }
+}
+
+tasks.named("check") {
+	dependsOn(npmTest)
+}
+
 tasks.named<ProcessResources>("processResources") {
 	dependsOn(npmBuild)
 	from(frontendDir.dir("dist")) {
