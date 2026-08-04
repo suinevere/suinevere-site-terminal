@@ -42,3 +42,6 @@ out/
 ### Frontend ###
 frontend/node_modules/
 frontend/dist/
+
+### Embedded upstream project (its own git repo) ###
+Netlink/
