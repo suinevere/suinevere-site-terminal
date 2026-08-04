@@ -475,6 +475,7 @@ package org.suinevere.site.terminal.suinevere_site_terminal
 
 import org.junit.jupiter.api.Test
 import reactor.core.publisher.Flux
+import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import java.time.Duration
 
@@ -484,13 +485,19 @@ class UpstreamTcpClientTest {
 		TerminalProperties(host = "127.0.0.1", port = port, connectTimeout = Duration.ofSeconds(5)),
 	)
 
+	private fun Flux<String>.accumulatedUntil(expected: String): Mono<String> =
+		scan("") { acc, chunk -> acc + chunk }
+			.filter { it == expected }
+			.next()
+
 	@Test
 	fun `receives the upstream banner`() {
 		val server = EchoTcpServer.startEchoing("Hello sailor!\r\n>")
 		try {
-			StepVerifier.create(clientFor(server.port()).open(Flux.never()).take(1))
+			StepVerifier.create(clientFor(server.port()).open(Flux.never()).accumulatedUntil("Hello sailor!\r\n>"))
 				.expectNext("Hello sailor!\r\n>")
-				.verifyComplete()
+				.expectComplete()
+				.verify(Duration.ofSeconds(10))
 		} finally {
 			server.disposeNow()
 		}
@@ -500,14 +507,10 @@ class UpstreamTcpClientTest {
 	fun `sends a typed line upstream and returns the reply`() {
 		val server = EchoTcpServer.startEchoing("> ")
 		try {
-			val output = clientFor(server.port())
-				.open(Flux.just("suinevere\r\n"))
-				.take(2)
-				.reduce("") { acc, chunk -> acc + chunk }
-
-			StepVerifier.create(output)
+			StepVerifier.create(clientFor(server.port()).open(Flux.just("suinevere\r\n")).accumulatedUntil("> suinevere\r\n"))
 				.expectNext("> suinevere\r\n")
-				.verifyComplete()
+				.expectComplete()
+				.verify(Duration.ofSeconds(10))
 		} finally {
 			server.disposeNow()
 		}
@@ -517,14 +520,10 @@ class UpstreamTcpClientTest {
 	fun `preserves high bytes instead of corrupting them`() {
 		val server = EchoTcpServer.startEchoing("")
 		try {
-			val output = clientFor(server.port())
-				.open(Flux.just("éÿ\r\n"))
-				.filter { it.isNotEmpty() }
-				.take(1)
-
-			StepVerifier.create(output)
+			StepVerifier.create(clientFor(server.port()).open(Flux.just("éÿ\r\n")).accumulatedUntil("éÿ\r\n"))
 				.expectNext("éÿ\r\n")
-				.verifyComplete()
+				.expectComplete()
+				.verify(Duration.ofSeconds(10))
 		} finally {
 			server.disposeNow()
 		}
@@ -552,6 +551,8 @@ class UpstreamTcpClientTest {
 }
 ```
 
+`accumulatedUntil` is why these tests are trustworthy. TCP does not promise that a banner and an echo arrive as two separate reads — loopback may coalesce them into one, or split either across two. Asserting on a chunk count would make segment boundaries part of the contract, and a coalesced read would leave `take(2)` waiting on an element that never comes. Accumulating until the text matches asserts content instead of transport behavior, and the explicit `verify` timeout means a genuine failure times out rather than hanging the build forever.
+
 - [ ] **Step 3: Run tests to verify they fail**
 
 Run: `./gradlew test --tests '*UpstreamTcpClientTest*'`
@@ -571,21 +572,35 @@ Create `UpstreamTcpClient.kt`:
  ----------------------*/
 package org.suinevere.site.terminal.suinevere_site_terminal
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.netty.channel.AbortedException
 import reactor.netty.tcp.TcpClient
 import java.nio.charset.StandardCharsets
+
+/*----------------------
+ | log
+ | Description: Logger for upstream write failures that are absorbed rather than surfaced.
+ | Author: suinevere
+ | Dependencies: slf4j
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
+private val log = LoggerFactory.getLogger(UpstreamTcpClient::class.java)
 
 @Component
 class UpstreamTcpClient(private val properties: TerminalProperties) {
 
 	/*----------------------
 	 | open
-	 | Description: Connects upstream, pumps inbound lines out and returns decoded upstream output.
+	 | Description: Connects upstream and returns decoded output; the merged write pump emits nothing and
+	 |              exists only so writes run concurrently with reads on the one connection.
 	 | Author: suinevere
 	 | Dependencies: TerminalProperties, reactor-netty TcpClient
-	 | Globals: N/A
+	 | Globals: log
 	 | Params: inbound -- lines typed by the browser, already CRLF-terminated
 	 | Returns: Flux of upstream output decoded as ISO-8859-1, completing when either side closes
 	 ----------------------*/
@@ -600,7 +615,8 @@ class UpstreamTcpClient(private val properties: TerminalProperties) {
 					.sendString(inbound, StandardCharsets.ISO_8859_1)
 					.then()
 					.cast(String::class.java)
-					.onErrorComplete()
+					.doOnError { log.debug("upstream write failed", it) }
+					.onErrorComplete(AbortedException::class.java)
 
 				connection.inbound()
 					.receive()
@@ -612,7 +628,9 @@ class UpstreamTcpClient(private val properties: TerminalProperties) {
 }
 ```
 
-The write pump is a `Mono<Void>` cast to `Mono<String>`. It emits no elements, so the cast never runs; merging it just keeps writes flowing concurrently with reads on the same connection. `onErrorComplete` absorbs the abort that reactor-netty raises on the outbound side when the channel closes normally, which would otherwise surface to the user as an error.
+The write pump is a `Mono<Void>` cast to `Mono<String>`. It emits no elements, so the cast never runs; merging it just keeps writes flowing concurrently with reads on the same connection.
+
+The error handling is deliberately narrow. `AbortedException` is what reactor-netty raises on the outbound side when the channel closes normally, and absorbing it prevents a routine disconnect from surfacing as an error. A bare `onErrorComplete()` would also swallow genuine write failures — an unmappable encode, a write to a half-closed socket — leaving the user's keystrokes silently dropped while the read side keeps the terminal looking alive. Anything that is not an abort propagates, and everything gets logged.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
