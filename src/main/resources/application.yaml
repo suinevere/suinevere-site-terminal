@@ -1,3 +1,15 @@
 spring:
   application:
     name: suinevere-site-terminal
+  rsocket:
+    server:
+      transport: websocket
+      mapping-path: /rsocket
+
+terminal:
+  upstream:
+    host: suinevere.duckdns.org
+    port: 23
+    connect-timeout: 10s
+    max-sessions: 32
+    output-buffer: 1024
