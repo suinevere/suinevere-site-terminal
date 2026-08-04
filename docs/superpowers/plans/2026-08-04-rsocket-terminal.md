@@ -1865,6 +1865,9 @@ export default function Terminal() {
         session = opened
       })
       .catch((error: Error) => {
+        if (disposed) {
+          return
+        }
         term.write(`\r\n[connection lost: ${error.message}]\r\n`)
         setLive(false)
       })
@@ -1889,6 +1892,8 @@ export default function Terminal() {
   )
 }
 ```
+
+All three asynchronous callbacks — `.then`, `.catch`, and `onClose` — check `disposed` before touching the terminal or component state. The `.catch` guard is the least obvious and the most important: `live` is component-level state shared across generations, so a connect rejection arriving after teardown would otherwise flip a newer, healthy session's Reconnect button on, and write to an already-disposed XTerm instance.
 
 - [ ] **Step 2: Write the app shell**
 
