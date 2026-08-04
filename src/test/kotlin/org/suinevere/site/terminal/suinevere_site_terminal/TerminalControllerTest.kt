@@ -21,6 +21,7 @@ import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import java.net.URI
 import java.time.Duration
+import kotlin.test.assertEquals
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TerminalControllerTest {
@@ -56,12 +57,14 @@ class TerminalControllerTest {
 	fun `never forwards the handshake sentinel upstream`() {
 		val output = requester()
 			.route("terminal.session")
-			.data(Flux.just(INIT_SENTINEL), String::class.java)
+			.data(Flux.just(INIT_SENTINEL, "suinevere\r\n"), String::class.java)
 			.retrieveFlux<String>()
-			.accumulatedUntil("> ")
+			.scan("") { acc, chunk -> acc + chunk }
+			.filter { it.endsWith("suinevere\r\n") }
+			.next()
 
 		StepVerifier.create(output)
-			.expectNext("> ")
+			.assertNext { assertEquals("> suinevere\r\n", it) }
 			.expectComplete()
 			.verify(Duration.ofSeconds(15))
 	}
