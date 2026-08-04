@@ -1620,7 +1620,7 @@ export async function openTerminalSession(
 
   const requester = rsocket.requestChannel(
     {
-      data: Buffer.from(INIT_SENTINEL, 'latin1'),
+      data: Buffer.from(INIT_SENTINEL, 'utf8'),
       metadata: routeMetadata(ROUTE),
     },
     REQUEST_N,
@@ -1628,7 +1628,7 @@ export async function openTerminalSession(
     {
       onNext: (payload) => {
         if (payload.data) {
-          options.onData(Buffer.from(payload.data).toString('latin1'))
+          options.onData(Buffer.from(payload.data).toString('utf8'))
         }
       },
       onError: (error) => options.onClose(error.message),
@@ -1641,7 +1641,7 @@ export async function openTerminalSession(
 
   return {
     send: (line: string): void => {
-      requester.onNext({ data: Buffer.from(line, 'latin1') }, false)
+      requester.onNext({ data: Buffer.from(line, 'utf8') }, false)
     },
     close: (): void => {
       requester.cancel()
@@ -1651,7 +1651,9 @@ export async function openTerminalSession(
 }
 ```
 
-`latin1` is Node's name for ISO-8859-1, matching the backend charset exactly, so bytes survive the round trip unchanged.
+The payload charset here is `utf8`, not `latin1`, and the distinction is load-bearing. ISO-8859-1 belongs on the TCP leg alone, where raw bytes become text. By the time data reaches RSocket it is already a decoded `String`, and Spring's `text/plain` codecs encode it as UTF-8 — verified in `spring-core`, where both `AbstractCharSequenceDecoder.DEFAULT_CHARSET` and `CharSequenceEncoder.DEFAULT_CHARSET` are `UTF_8`.
+
+Using `latin1` here would look symmetric with the backend and silently corrupt every byte above 0x7F: upstream `0xE9` decodes to `é`, Spring encodes it as `C3 A9`, and a Latin-1 read renders `Ã©`. Inbound is worse — a typed `é` becomes `0xE9`, fails UTF-8 decoding, and reaches the socket as `?`. With `utf8` the browser's string equals the Kotlin `String` exactly, and ISO-8859-1 stays where it belongs.
 
 - [ ] **Step 2: Write the live verification script**
 
@@ -1694,7 +1696,7 @@ let received = ''
 
 const requester = rsocket.requestChannel(
   {
-    data: Buffer.from('\u0000INIT', 'latin1'),
+    data: Buffer.from('\u0000INIT', 'utf8'),
     metadata: encodeCompositeMetadata([
       [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, encodeRoute('terminal.session')],
     ]),
@@ -1703,8 +1705,8 @@ const requester = rsocket.requestChannel(
   false,
   {
     onNext: (payload) => {
-      received += Buffer.from(payload.data).toString('latin1')
-      process.stdout.write(Buffer.from(payload.data).toString('latin1'))
+      received += Buffer.from(payload.data).toString('utf8')
+      process.stdout.write(Buffer.from(payload.data).toString('utf8'))
     },
     onError: (error) => {
       console.error('\nERROR:', error.message)
@@ -1723,7 +1725,7 @@ setTimeout(() => {
     process.exit(1)
   }
   console.log('\n\nOK: banner received, sending a bare Enter')
-  requester.onNext({ data: Buffer.from('\r\n', 'latin1') }, false)
+  requester.onNext({ data: Buffer.from('\r\n', 'utf8') }, false)
   setTimeout(() => {
     if (!received.includes("What's your name")) {
       console.error('\nFAIL: no response to Enter')

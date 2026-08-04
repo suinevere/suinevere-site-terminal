@@ -77,10 +77,15 @@ inbound read-stream so writes and reads proceed concurrently over one connection
 write-pump is a `Mono<Void>` cast into the output type — it contributes no elements, only
 its completion and errors. Disposes the connection on terminate, cancel, or error.
 
-**Charset is ISO-8859-1, deliberately.** TCP splits reads at arbitrary byte boundaries.
-UTF-8 decoding corrupts any multi-byte character straddling a segment; ISO-8859-1 is a
-lossless one-byte-to-one-char mapping that cannot fail mid-stream. Safe here because the
-upstream is ASCII.
+**Charset is ISO-8859-1 on the TCP leg, deliberately — and only there.** TCP splits reads
+at arbitrary byte boundaries. UTF-8 decoding corrupts any multi-byte character straddling a
+segment; ISO-8859-1 is a lossless one-byte-to-one-char mapping that cannot fail mid-stream.
+
+The scope matters as much as the choice. ISO-8859-1 belongs at the one hop where raw bytes
+become text. Past that point the system carries a decoded `String`, and the RSocket leg must
+use whatever charset its codec actually uses — Spring's `text/plain` codecs default to UTF-8.
+Propagating ISO-8859-1 outward to the browser looks symmetric but silently mangles every byte
+above 0x7F, because Spring would UTF-8 encode a character the browser then decodes as Latin-1.
 
 Output is buffered with a bounded queue sized from config, so a chatty or hostile
 upstream cannot exhaust JVM heap.
