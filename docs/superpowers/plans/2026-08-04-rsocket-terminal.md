@@ -55,7 +55,8 @@
 | File | Responsibility |
 |---|---|
 | `SuinevereSiteTerminalApplicationTests.kt` | Context loads (exists). |
-| `TerminalPropertiesTest.kt` | Configuration binding. |
+| `TerminalPropertiesTest.kt` | Production yaml values are what they should be. |
+| `TerminalPropertiesBindingTest.kt` | Binding genuinely happens, not default fallback. |
 | `EchoTcpServer.kt` | Test fixture: local upstream on an ephemeral port. |
 | `UpstreamTcpClientTest.kt` | Byte fidelity, round-trip, disconnect, connect failure. |
 | `TerminalControllerTest.kt` | RSocket channel round-trip and sentinel filtering. |
@@ -241,6 +242,7 @@ git commit -m "Add WebFlux and expose RSocket over WebSocket with a Foojay-provi
 **Files:**
 - Create: `src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalProperties.kt`
 - Test: `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalPropertiesTest.kt`
+- Test: `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalPropertiesBindingTest.kt`
 
 **Interfaces:**
 - Consumes: `@ConfigurationPropertiesScan` from Task 1.
@@ -330,7 +332,63 @@ data class TerminalProperties(
 Run: `./gradlew test --tests '*TerminalPropertiesTest*'`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Prove the binder actually reads configuration**
+
+The test above asserts values identical to the data class defaults, so it would pass even if binding were completely broken and every field fell back to its default. This second class overrides all five properties with values no default could produce.
+
+Create `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalPropertiesBindingTest.kt`:
+
+```kotlin
+/*----------------------
+ | TerminalPropertiesBindingTest.kt
+ | Description: Proves the binder reads configuration rather than silently falling back to defaults.
+ | Author: suinevere
+ | Dependencies: spring-boot-starter-test
+ | Globals: N/A
+ ----------------------*/
+package org.suinevere.site.terminal.suinevere_site_terminal
+
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.context.TestPropertySource
+import java.time.Duration
+import kotlin.test.assertEquals
+
+@SpringBootTest
+@TestPropertySource(
+	properties = [
+		"terminal.upstream.host=example.invalid",
+		"terminal.upstream.port=2323",
+		"terminal.upstream.connect-timeout=3s",
+		"terminal.upstream.max-sessions=7",
+		"terminal.upstream.output-buffer=64",
+	],
+)
+class TerminalPropertiesBindingTest {
+
+	@Autowired
+	private lateinit var properties: TerminalProperties
+
+	@Test
+	fun `overridden values reach the bound class`() {
+		assertEquals("example.invalid", properties.host)
+		assertEquals(2323, properties.port)
+		assertEquals(Duration.ofSeconds(3), properties.connectTimeout)
+		assertEquals(7, properties.maxSessions)
+		assertEquals(64, properties.outputBuffer)
+	}
+}
+```
+
+Every asserted value differs from the corresponding default, so a broken prefix, a missing `@ConfigurationPropertiesScan`, or a typo in a property name all fail this test.
+
+- [ ] **Step 6: Run both property tests**
+
+Run: `./gradlew test --tests '*TerminalProperties*'`
+Expected: both classes PASS.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/main/kotlin src/test/kotlin
