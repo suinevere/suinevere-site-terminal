@@ -2047,6 +2047,8 @@ val npmBuild by tasks.registering(Exec::class) {
 	commandLine(npmCommand, "run", "build")
 	inputs.dir(frontendDir.dir("src"))
 	inputs.file(frontendDir.file("package.json"))
+	inputs.file(frontendDir.file("package-lock.json"))
+	inputs.file(frontendDir.file("tsconfig.json"))
 	inputs.file(frontendDir.file("vite.config.ts"))
 	inputs.file(frontendDir.file("index.html"))
 	outputs.dir(frontendDir.dir("dist"))
@@ -2059,6 +2061,8 @@ tasks.named<ProcessResources>("processResources") {
 	}
 }
 ```
+
+The input list matters more than it looks. `npmBuild` depends on `npmInstall`, but a task dependency alone does not invalidate `npmBuild`'s own up-to-date check. Without `package-lock.json` declared, a transitive dependency bump reinstalls `node_modules` and then skips the rebuild, packaging a bundle built against the old dependencies. Without `tsconfig.json`, changing the TypeScript target or JSX mode does the same. Declaring the lockfile directly is cheaper than declaring `npmInstall`'s output, since the latter makes Gradle snapshot the whole `node_modules` tree on every build.
 
 `ProcessResources` needs this import at the top of `build.gradle.kts`:
 
