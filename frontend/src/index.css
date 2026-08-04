@@ -1,0 +1,38 @@
+/*----------------------
+ | index.css
+ | Description: Full-viewport dark layout for the terminal surface.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ ----------------------*/
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #0b0b0b;
+}
+
+.terminal-shell {
+  position: relative;
+  height: 100%;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.terminal-surface {
+  height: 100%;
+}
+
+.reconnect {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  padding: 6px 14px;
+  font: inherit;
+  color: #0b0b0b;
+  background: #d8d8d8;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
