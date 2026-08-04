@@ -4,7 +4,6 @@
     <option name="SPRING_BOOT_MAIN_CLASS" value="org.suinevere.site.terminal.suinevere_site_terminal.SuinevereSiteTerminalApplication" />
     <method v="2">
       <option name="Make" enabled="true" />
-      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Start" run_configuration_type="js.build_tools.npm" />
     </method>
   </configuration>
 </component>
