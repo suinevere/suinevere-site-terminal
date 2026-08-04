@@ -62,6 +62,7 @@
 | `TerminalControllerTest.kt` | RSocket channel round-trip and sentinel filtering. |
 | `TerminalResilienceTest.kt` | Unreachable upstream surfaces as terminal text. |
 | `TerminalSessionCapTest.kt` | Concurrent session cap rejects the extra session. |
+| `TerminalDisconnectTest.kt` | Upstream hangup appends the disconnect notice. |
 
 **Frontend** — `frontend/`
 
@@ -903,7 +904,7 @@ Create `TerminalResilienceTest.kt`:
 ```kotlin
 /*----------------------
  | TerminalResilienceTest.kt
- | Description: Verifies unreachable upstream and session cap surface as readable terminal text.
+ | Description: Verifies an unreachable upstream surfaces as readable terminal text.
  | Author: suinevere
  | Dependencies: spring-boot-starter-test, reactor-test
  | Globals: N/A
@@ -1011,7 +1012,7 @@ class TerminalSessionCapTest {
 
 			StepVerifier.create(openSession())
 				.expectNext(BUSY_MESSAGE)
-				.thenCancel()
+				.expectComplete()
 				.verify(Duration.ofSeconds(15))
 		} finally {
 			holder.dispose()
@@ -1039,12 +1040,86 @@ class TerminalSessionCapTest {
 
 `EchoTcpServer.startEchoing` never completes its outbound, so the first session keeps its slot for the whole test. The assertion is a single exact value — remove the cap and this test fails.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Cover the disconnect path**
 
-Run: `./gradlew test --tests '*TerminalResilienceTest*' --tests '*TerminalSessionCapTest*'`
-Expected: FAIL — the channel errors instead of emitting `[unable to reach 127.0.0.1:1]`, and no cap is enforced.
+The third failure mode needs its own class again, because it needs an upstream that hangs up. Without this test, deleting the `concatWith(DISCONNECTED_MESSAGE)` line breaks nothing — and an upstream hangup is the most common of the three failures in production.
 
-- [ ] **Step 3: Write the implementation**
+Create `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/TerminalDisconnectTest.kt`:
+
+```kotlin
+/*----------------------
+ | TerminalDisconnectTest.kt
+ | Description: Verifies an upstream hangup reaches the terminal as readable text.
+ | Author: suinevere
+ | Dependencies: spring-boot-starter-test, reactor-test, EchoTcpServer
+ | Globals: N/A
+ ----------------------*/
+package org.suinevere.site.terminal.suinevere_site_terminal
+
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Test
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.messaging.rsocket.RSocketRequester
+import org.springframework.messaging.rsocket.retrieveFlux
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.springframework.util.MimeTypeUtils
+import reactor.core.publisher.Flux
+import reactor.test.StepVerifier
+import java.net.URI
+import java.time.Duration
+import kotlin.test.assertEquals
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class TerminalDisconnectTest {
+
+	@LocalServerPort
+	private var port: Int = 0
+
+	@Test
+	fun `reports an upstream hangup as terminal text`() {
+		val output = RSocketRequester.builder()
+			.dataMimeType(MimeTypeUtils.TEXT_PLAIN)
+			.websocket(URI.create("ws://localhost:$port/rsocket"))
+			.route("terminal.session")
+			.data(Flux.just(INIT_SENTINEL), String::class.java)
+			.retrieveFlux<String>()
+			.reduce("") { acc, chunk -> acc + chunk }
+
+		StepVerifier.create(output)
+			.assertNext { assertEquals("bye\r\n$DISCONNECTED_MESSAGE", it) }
+			.expectComplete()
+			.verify(Duration.ofSeconds(15))
+	}
+
+	companion object {
+		private val upstream = EchoTcpServer.startThenClose("bye\r\n")
+
+		@JvmStatic
+		@DynamicPropertySource
+		fun upstreamEndpoint(registry: DynamicPropertyRegistry) {
+			registry.add("terminal.upstream.host") { "127.0.0.1" }
+			registry.add("terminal.upstream.port") { upstream.port() }
+		}
+
+		@JvmStatic
+		@AfterAll
+		fun stopUpstream() {
+			upstream.disposeNow()
+		}
+	}
+}
+```
+
+`reduce` waits for the stream to actually terminate, so this test proves two things at once: the hangup propagates as a completion rather than hanging, and the disconnect notice is appended. Delete the `concatWith` line and the accumulated text is just `"bye\r\n"`, failing with a precise diff rather than a timeout.
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `./gradlew test --tests '*TerminalResilienceTest*' --tests '*TerminalSessionCapTest*' --tests '*TerminalDisconnectTest*'`
+Expected: FAIL — the channel errors instead of emitting `[unable to reach 127.0.0.1:1]`, no cap is enforced, and no disconnect notice is appended.
+
+- [ ] **Step 4: Write the implementation**
 
 Replace the whole of `TerminalController.kt`:
 
@@ -1069,6 +1144,15 @@ class TerminalController(
 	private val properties: TerminalProperties,
 ) {
 
+	/*----------------------
+	 | active
+	 | Description: Live bridged sessions, used to enforce the concurrent session cap.
+	 | Author: suinevere
+	 | Dependencies: N/A
+	 | Globals: N/A
+	 | Params: N/A
+	 | Returns: N/A
+	 ----------------------*/
 	private val active = AtomicInteger(0)
 
 	/*----------------------
@@ -1086,7 +1170,7 @@ class TerminalController(
 			active.decrementAndGet()
 			return@defer Flux.just(BUSY_MESSAGE)
 		}
-		upstream.open(inbound.filter { it != INIT_SENTINEL })
+		Flux.defer { upstream.open(inbound.filter { it != INIT_SENTINEL }) }
 			.concatWith(Flux.just(DISCONNECTED_MESSAGE))
 			.onErrorResume { Flux.just(unreachableMessage(properties.host, properties.port)) }
 			.doFinally { active.decrementAndGet() }
@@ -1096,19 +1180,19 @@ class TerminalController(
 
 `Flux.defer` moves the cap check to subscription time, so a channel that is never subscribed cannot leak a slot.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
-Run: `./gradlew test --tests '*TerminalResilienceTest*' --tests '*TerminalSessionCapTest*'`
-Expected: both PASS.
+Run: `./gradlew test --tests '*TerminalResilienceTest*' --tests '*TerminalSessionCapTest*' --tests '*TerminalDisconnectTest*'`
+Expected: all three PASS.
 
-- [ ] **Step 5: Run the whole backend suite**
+- [ ] **Step 6: Run the whole backend suite**
 
 Run: `./gradlew test`
 Expected: all tests PASS.
 
 Task 4's `round-trips a typed line` test takes two chunks and now a third (`DISCONNECTED_MESSAGE`) exists on the stream. It still passes because `take(2)` stops first. If it does not, raise its `take` and assert the disconnect notice explicitly.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/main/kotlin src/test/kotlin
