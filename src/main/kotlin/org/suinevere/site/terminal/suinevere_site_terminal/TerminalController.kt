@@ -18,6 +18,15 @@ class TerminalController(
 	private val properties: TerminalProperties,
 ) {
 
+	/*----------------------
+	 | active
+	 | Description: Live bridged sessions, used to enforce the concurrent session cap.
+	 | Author: suinevere
+	 | Dependencies: N/A
+	 | Globals: N/A
+	 | Params: N/A
+	 | Returns: N/A
+	 ----------------------*/
 	private val active = AtomicInteger(0)
 
 	/*----------------------
@@ -35,7 +44,7 @@ class TerminalController(
 			active.decrementAndGet()
 			return@defer Flux.just(BUSY_MESSAGE)
 		}
-		upstream.open(inbound.filter { it != INIT_SENTINEL })
+		Flux.defer { upstream.open(inbound.filter { it != INIT_SENTINEL }) }
 			.concatWith(Flux.just(DISCONNECTED_MESSAGE))
 			.onErrorResume { Flux.just(unreachableMessage(properties.host, properties.port)) }
 			.doFinally { active.decrementAndGet() }

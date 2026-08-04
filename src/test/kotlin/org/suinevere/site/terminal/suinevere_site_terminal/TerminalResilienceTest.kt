@@ -1,6 +1,6 @@
 /*----------------------
  | TerminalResilienceTest.kt
- | Description: Verifies unreachable upstream and session cap surface as readable terminal text.
+ | Description: Verifies an unreachable upstream surfaces as readable terminal text.
  | Author: suinevere
  | Dependencies: spring-boot-starter-test, reactor-test
  | Globals: N/A

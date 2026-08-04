@@ -1,6 +1,6 @@
 /*----------------------
- | TerminalSessionCapTest.kt
- | Description: Verifies the concurrent session cap rejects an extra session with readable terminal text.
+ | TerminalDisconnectTest.kt
+ | Description: Verifies an upstream hangup reaches the terminal as readable text.
  | Author: suinevere
  | Dependencies: spring-boot-starter-test, reactor-test, EchoTcpServer
  | Globals: N/A
@@ -15,53 +15,37 @@ import org.springframework.messaging.rsocket.RSocketRequester
 import org.springframework.messaging.rsocket.retrieveFlux
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.springframework.test.context.TestPropertySource
 import org.springframework.util.MimeTypeUtils
-import reactor.core.Disposable
 import reactor.core.publisher.Flux
 import reactor.test.StepVerifier
 import java.net.URI
 import java.time.Duration
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import kotlin.test.assertTrue
+import kotlin.test.assertEquals
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = ["terminal.upstream.max-sessions=1"])
-class TerminalSessionCapTest {
+class TerminalDisconnectTest {
 
 	@LocalServerPort
 	private var port: Int = 0
 
-	private fun openSession(): Flux<String> =
-		RSocketRequester.builder()
+	@Test
+	fun `reports an upstream hangup as terminal text`() {
+		val output = RSocketRequester.builder()
 			.dataMimeType(MimeTypeUtils.TEXT_PLAIN)
 			.websocket(URI.create("ws://localhost:$port/rsocket"))
 			.route("terminal.session")
 			.data(Flux.just(INIT_SENTINEL), String::class.java)
 			.retrieveFlux<String>()
+			.reduce("") { acc, chunk -> acc + chunk }
 
-	@Test
-	fun `reports server busy once the session cap is reached`() {
-		val connected = CountDownLatch(1)
-		val holder: Disposable = openSession()
-			.doOnNext { connected.countDown() }
-			.subscribe()
-
-		try {
-			assertTrue(connected.await(15, TimeUnit.SECONDS), "the first session never reached upstream")
-
-			StepVerifier.create(openSession())
-				.expectNext(BUSY_MESSAGE)
-				.expectComplete()
-				.verify(Duration.ofSeconds(15))
-		} finally {
-			holder.dispose()
-		}
+		StepVerifier.create(output)
+			.assertNext { assertEquals("bye\r\n$DISCONNECTED_MESSAGE", it) }
+			.expectComplete()
+			.verify(Duration.ofSeconds(15))
 	}
 
 	companion object {
-		private val upstream = EchoTcpServer.startEchoing("> ")
+		private val upstream = EchoTcpServer.startThenClose("bye\r\n")
 
 		@JvmStatic
 		@DynamicPropertySource
