@@ -14,6 +14,15 @@ import {
   WellKnownMimeType,
 } from '@rsocket/composite-metadata'
 
+/*----------------------
+ | URL
+ | Description: The bridge endpoint to connect to, overridable via RSOCKET_URL for testing against non-default hosts.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const URL = process.env.RSOCKET_URL ?? 'ws://localhost:8080/rsocket'
 
 const connector = new RSocketConnector({
@@ -43,8 +52,10 @@ const requester = rsocket.requestChannel(
   false,
   {
     onNext: (payload) => {
-      received += Buffer.from(payload.data).toString('latin1')
-      process.stdout.write(Buffer.from(payload.data).toString('latin1'))
+      if (payload.data) {
+        received += Buffer.from(payload.data).toString('latin1')
+        process.stdout.write(Buffer.from(payload.data).toString('latin1'))
+      }
     },
     onError: (error) => {
       console.error('\nERROR:', error.message)

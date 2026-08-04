@@ -14,10 +14,55 @@ import {
   WellKnownMimeType,
 } from '@rsocket/composite-metadata'
 
+/*----------------------
+ | ROUTE
+ | Description: The Spring message-mapping this channel targets.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const ROUTE = 'terminal.session'
+/*----------------------
+ | INIT_SENTINEL
+ | Description: The handshake payload the backend filters as the channel's first inbound element; the leading NUL is unreachable from a keyboard, so it can never collide with real input.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const INIT_SENTINEL = '\u0000INIT'
+/*----------------------
+ | REQUEST_N
+ | Description: An effectively-unbounded request(n) so the server is never throttled by the client's declared demand.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const REQUEST_N = 2147483647
+/*----------------------
+ | KEEPALIVE_MS
+ | Description: Interval between RSocket keepalive frames sent to the server.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const KEEPALIVE_MS = 20000
+/*----------------------
+ | LIFETIME_MS
+ | Description: How long the server may go without a keepalive before it treats this connection as dead.
+ | Author: suinevere
+ | Dependencies: N/A
+ | Globals: N/A
+ | Params: N/A
+ | Returns: N/A
+ ----------------------*/
 const LIFETIME_MS = 90000
 
 export type TerminalSessionOptions = {
