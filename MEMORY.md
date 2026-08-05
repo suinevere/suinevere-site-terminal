@@ -148,6 +148,32 @@ with `Upgrade`/`Connection` headers ahead of the catch-all, or to be served from
 **Port 80 redirects to `http://suin.uk`, not `https://`** — a downgrade that leaves the
 first request to the destination in cleartext.
 
+## Expected behaviour once the gate is live
+
+Plain `telnet host 23` **stops working, by design**. The signature of a healthy gate is:
+
+```
+TCP CONNECT: OK          <- nginx listening on 23, forwarding
+READ: 0 bytes, closed    <- authproxy rejected: no AUTH preamble
+```
+
+A connect *timeout* means something else — nothing listening, or a firewall. Distinguish the
+two before debugging.
+
+Positive test, with the length byte computed from the secret:
+
+```bash
+SECRET='YourSecretHere'
+printf "AUTH$(printf '\\%03o' ${#SECRET})%s" "$SECRET" | nc -q5 suinevere.duckdns.org 23
+```
+
+Admin access goes *around* the gate rather than reopening it — SSH to the box and use
+`nc 127.0.0.1 2323`, which reaches multizorkd directly on loopback.
+
+**The Spring bridge is affected identically to telnet.** If `terminal.upstream.host` still
+points at the public name it opens a raw connection with no preamble and is rejected. On-box
+it should be `127.0.0.1:2323`; off-box, `UpstreamTcpClient` must send the preamble itself.
+
 ## Ordering when moving port 23 behind nginx
 
 nginx cannot bind 23 while Docker holds it, so the outage window is unavoidable but should
