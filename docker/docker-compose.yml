@@ -2,13 +2,17 @@
 #  docker-compose.yml
 #  Description: Runs the terminal bridge and multizorkd together so neither is published beyond loopback.
 #  Author: suinevere
-#  Dependencies: Dockerfile, ops/multizork/Dockerfile, ops/README.md
+#  Dependencies: Dockerfile, multizork/Dockerfile, README.md
 #  Globals: TERMINAL_UPSTREAM_HOST, TERMINAL_UPSTREAM_PORT, TERMINAL_UPSTREAM_MAXSESSIONS
 # ----------------------
+
+# Pinned so the volume name does not follow the directory this is run from.
+name: suinevere-terminal
+
 services:
   multizork:
     build:
-      context: ops/multizork
+      context: multizork
       dockerfile: Dockerfile
     image: multizorkd:latest
     container_name: multizork
@@ -50,7 +54,11 @@ services:
         max-file: "3"
 
   terminal:
-    build: .
+    # The context is the repo root because the jar is built from source; `.dockerignore`
+    # lives there for the same reason, and has to stay there to apply.
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     image: suinevere-site-terminal:0.0.1
     container_name: suinevere-site-terminal
     restart: unless-stopped
