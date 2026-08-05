@@ -1,25 +1,72 @@
 # ----------------------
 #  docker-compose.yml
-#  Description: Runs the terminal bridge on loopback so nginx, not Docker's iptables rules, decides who reaches it.
+#  Description: Runs the terminal bridge and multizorkd together so neither is published beyond loopback.
 #  Author: suinevere
-#  Dependencies: Dockerfile, ops/README.md
+#  Dependencies: Dockerfile, ops/multizork/Dockerfile, ops/README.md
 #  Globals: TERMINAL_UPSTREAM_HOST, TERMINAL_UPSTREAM_PORT, TERMINAL_UPSTREAM_MAXSESSIONS
 # ----------------------
 services:
+  multizork:
+    build:
+      context: ops/multizork
+      dockerfile: Dockerfile
+    image: multizorkd:latest
+    container_name: multizork
+    restart: unless-stopped
+
+    # nginx binds 23 on the host and proxies here. Publishing 23 from Docker would
+    # take the port back and put the C parser directly on the internet.
+    ports:
+      - "127.0.0.1:2323:2323"
+
+    volumes:
+      - multizork-data:/data
+
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # Opens a real connection, so multizorkd logs a connect/disconnect pair each time.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/2323"]
+      interval: 60s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   terminal:
     build: .
     image: suinevere-site-terminal:0.0.1
     container_name: suinevere-site-terminal
     restart: unless-stopped
+    depends_on:
+      - multizork
 
     # Loopback only. Docker writes iptables rules ahead of ufw's, so a 0.0.0.0 publish
     # would be reachable from the internet no matter what ufw says.
     ports:
       - "127.0.0.1:8080:8080"
 
+    # Reaches multizorkd over the compose network, so browser sessions never leave the
+    # box and never collapse into one source IP against `limit_conn mud 3`.
     environment:
-      TERMINAL_UPSTREAM_HOST: "${TERMINAL_UPSTREAM_HOST:-suinevere.duckdns.org}"
-      TERMINAL_UPSTREAM_PORT: "${TERMINAL_UPSTREAM_PORT:-23}"
+      TERMINAL_UPSTREAM_HOST: "${TERMINAL_UPSTREAM_HOST:-multizork}"
+      TERMINAL_UPSTREAM_PORT: "${TERMINAL_UPSTREAM_PORT:-2323}"
       TERMINAL_UPSTREAM_MAXSESSIONS: "${TERMINAL_UPSTREAM_MAXSESSIONS:-32}"
 
     read_only: true
@@ -52,20 +99,5 @@ services:
         max-size: 10m
         max-file: "3"
 
-# On-box loopback upstream (see ops/README.md before switching).
-#
-# The default above reaches multizorkd the long way round — out to the public address and
-# back in through the nginx stream. On the Oracle box that hairpin makes every browser
-# session share one source IP against `limit_conn mud 3`, so the fourth is refused.
-#
-# To go straight to the container on loopback instead, replace the `ports` block with
-# host networking and bind the server itself to loopback:
-#
-#     network_mode: host
-#     environment:
-#       SERVER_ADDRESS: "127.0.0.1"
-#       TERMINAL_UPSTREAM_HOST: "127.0.0.1"
-#       TERMINAL_UPSTREAM_PORT: "2323"
-#
-# `SERVER_ADDRESS` is not optional there: without it host networking publishes 8080 on
-# every interface, which is the exact exposure the loopback publish exists to prevent.
+volumes:
+  multizork-data:
