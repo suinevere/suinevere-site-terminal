@@ -1,0 +1,18 @@
+# ----------------------
+#  .dockerignore
+#  Description: Whitelists the build inputs so no locally built bundle or jar can leak into an image.
+#  Author: suinevere
+#  Dependencies: N/A
+#  Globals: N/A
+# ----------------------
+*
+
+!build.gradle.kts
+!settings.gradle.kts
+!gradlew
+!gradle/
+!src/
+!frontend/
+
+frontend/node_modules/
+frontend/dist/
