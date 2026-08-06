@@ -207,7 +207,10 @@ not one. Credentials come from the environment via `docker/.env`, alongside `AUT
 
 Browsers do not apply CORS to WebSockets, so a cookie-authenticated `/zork/rsocket` is
 cross-origin openable: any page could connect carrying the visitor's cookie and play as them.
-The stakes are low, the fix is cheap. In `terminal.suin.uk.conf`:
+This sits alongside the `auth_request` above in the same nginx block — `auth_request` answers
+*whether the visitor is signed in*, the `Origin` check answers *whether this page is entitled
+to use their session*. Both are needed; neither substitutes for the other. In
+`terminal.suin.uk.conf`:
 
 ```nginx
 map $http_origin $rsocket_origin_ok {
@@ -221,10 +224,53 @@ is the one genuinely new attack surface OAuth introduces.
 
 ### Authorization model
 
-**The RSocket socket inherits the HTTP handshake's authorization.** If the upgrade succeeded,
-the session was valid. There is no `spring-security-rsocket` and no per-payload
-authentication, deliberately. Recorded here so a future reviewer does not treat the absence
-as an oversight.
+**Revised 2026-08-06 after the Task 2 spike measured the original model to be unsound.**
+
+The first version of this section said the RSocket socket inherits the HTTP handshake's
+authorization. It does not. Spring Boot attaches RSocket-over-WebSocket to the Netty server
+**outside the `HttpHandler`**, which is the layer where both `spring.webflux.base-path` and
+the Spring Security `WebFilter` chain are applied. Measured unauthenticated, with the
+security starter on the classpath: `/rsocket` returns **101 Switching Protocols** while
+`/zork/` returns 401. Full measurement in
+`docs/superpowers/findings/2026-08-06-rsocket-binding-spike.md`; the durable fact is in
+`mem/rsocket-terminal-project.md`.
+
+**The boundary therefore lives in nginx, not in Spring Security.**
+
+```
+Browser ──wss://suin.uk/zork/rsocket──► Worker ──► nginx
+                                                    │
+                                    auth_request /_authcheck
+                                    (session cookie forwarded)
+                                                    ▼
+                                       Spring /zork/_authcheck
+                                         authenticated -> 204
+                                         otherwise     -> 401
+                                                    │
+                                    204 ─► proxy_pass 127.0.0.1:8080/rsocket
+                                    401 ─► upgrade denied
+```
+
+Two consequences that are easy to get wrong:
+
+- **The endpoint must return 401, not 302.** Under `oauth2Login` an unauthenticated request
+  redirects to Google, and nginx's `auth_request` treats a 302 as an unexpected response and
+  answers 500 — which fails open-looking and closed-behaving, the worst combination to
+  debug. `/_authcheck` gets its own higher-precedence `SecurityWebFilterChain` with
+  `HttpStatusServerEntryPoint(UNAUTHORIZED)`.
+- **`/rsocket` does not move under `/zork`.** Base-path does not reach it. nginx maps the
+  external `/zork/rsocket` onto the internal `/rsocket`; `spring.rsocket.server.mapping-path`
+  stays `/rsocket`. Setting it to `/zork/rsocket` as well would double the prefix.
+
+This is sufficient rather than merely convenient: the terminal container publishes
+`127.0.0.1:8080` only, so nginx is the sole path from the internet to that port. Reaching
+`/rsocket` around nginx requires already being on the box, where `nc 127.0.0.1 2323` reaches
+the game directly anyway.
+
+Deliberately **not** done: `spring-security-rsocket` with a token in the SETUP frame. It
+would enforce authorization inside the application and survive a proxy misconfiguration, at
+the cost of token minting, expiry and reconnect handling on both sides. Recorded so the
+absence reads as a decision, not an oversight.
 
 ### Frontend changes
 

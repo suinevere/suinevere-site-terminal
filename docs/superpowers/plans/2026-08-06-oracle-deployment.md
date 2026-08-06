@@ -506,17 +506,21 @@ git commit -m "Record where the RSocket websocket binds under a base path and wh
 
 ## Task 3: Require a Google identity, refuse every password
 
-**Do not start until Task 2 recorded Branch A.**
+**Task 2 recorded Branch B.** The RSocket WebSocket is **not** covered by the Spring Security
+`WebFilter` chain and does **not** move under `/zork`. This task was revised accordingly: it
+no longer claims to protect the WebSocket. It protects the HTTP surface and exposes the
+`/_authcheck` endpoint that nginx uses to protect the WebSocket in Task 6. **Neither task
+alone closes the hole — Task 3 and Task 6 must both land before the app is deployed.**
 
 **Files:**
 - Modify: `build.gradle.kts`
 - Modify: `src/main/resources/application.yaml`
 - Create: `src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/SecurityConfig.kt`
+- Create: `src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/AuthCheckController.kt`
 - Test: `src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/SecurityConfigTest.kt`
 
 **Interfaces:**
-- Consumes: the endpoint path recorded by Task 2.
-- Produces: every HTTP exchange requires an authenticated Google principal; the app is served under `/zork`; the CSRF token is readable by JavaScript from the `XSRF-TOKEN` cookie, which Task 5's sign-out depends on.
+- Produces: every HTTP exchange requires an authenticated Google principal; the app is served under `/zork`; `GET /zork/_authcheck` returns **204** when authenticated and **401** — never 302 — when not, which Task 6's `auth_request` depends on; the CSRF token is readable by JavaScript from the `XSRF-TOKEN` cookie, which Task 5's sign-out depends on.
 
 - [ ] **Step 1: Add the dependencies**
 
@@ -594,6 +598,21 @@ class SecurityConfigTest {
 	}
 
 	@Test
+	fun `the auth check endpoint answers 401 and never a redirect`() {
+		client.get().uri("/_authcheck")
+			.exchange()
+			.expectStatus().isUnauthorized
+	}
+
+	@Test
+	fun `the auth check endpoint answers 204 once signed in`() {
+		client.mutateWith(mockOAuth2Login())
+			.get().uri("/_authcheck")
+			.exchange()
+			.expectStatus().isNoContent
+	}
+
+	@Test
 	fun `basic authentication is not offered`() {
 		val challenge = client.get().uri("/")
 			.header("Authorization", "Basic dXNlcjpwYXNzd29yZA==")
@@ -632,18 +651,41 @@ package org.suinevere.site.terminal.suinevere_site_terminal.security
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
+import org.springframework.http.HttpStatus
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity
 import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.web.server.SecurityWebFilterChain
+import org.springframework.security.web.server.authentication.HttpStatusServerEntryPoint
 import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository
+import org.springframework.security.web.server.util.matcher.PathPatternParserServerWebExchangeMatcher
 
 @Configuration
 @EnableWebFluxSecurity
 class SecurityConfig {
 
 	/*----------------------
+	 | authCheckFilterChain
+	 | Description: Answers nginx's auth_request subrequest with 401 rather than the redirect oauth2Login would otherwise send.
+	 | Author: suinevere
+	 | Dependencies: ServerHttpSecurity
+	 | Globals: N/A
+	 | Params: http -- the chain builder supplied by Spring Security
+	 | Returns: the SecurityWebFilterChain guarding the auth-check endpoint alone
+	 ----------------------*/
+	@Bean
+	@Order(1)
+	fun authCheckFilterChain(http: ServerHttpSecurity): SecurityWebFilterChain =
+		http
+			.securityMatcher(PathPatternParserServerWebExchangeMatcher("/_authcheck"))
+			.authorizeExchange { it.anyExchange().authenticated() }
+			.exceptionHandling { it.authenticationEntryPoint(HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED)) }
+			.csrf { it.disable() }
+			.build()
+
+	/*----------------------
 	 | securityWebFilterChain
-	 | Description: Requires a Google sign-in for every exchange and refuses form and basic credentials outright.
+	 | Description: Requires a Google sign-in for every other exchange and refuses form and basic credentials outright.
 	 | Author: suinevere
 	 | Dependencies: ServerHttpSecurity
 	 | Globals: N/A
@@ -651,6 +693,7 @@ class SecurityConfig {
 	 | Returns: the configured SecurityWebFilterChain
 	 ----------------------*/
 	@Bean
+	@Order(2)
 	fun securityWebFilterChain(http: ServerHttpSecurity): SecurityWebFilterChain =
 		http
 			.authorizeExchange { it.anyExchange().authenticated() }
@@ -663,7 +706,51 @@ class SecurityConfig {
 }
 ```
 
+Two things here are load-bearing and neither is obvious from reading the code:
+
+`HttpStatusServerEntryPoint(UNAUTHORIZED)` on the first chain exists because `oauth2Login` would answer an unauthenticated `/_authcheck` with a **302 to Google**. nginx's `auth_request` treats a 302 as an unexpected response and returns **500** — a failure that reads as a server fault while actually denying every connection. The `@Order(1)` chain must therefore match `/_authcheck` **before** the general chain sees it.
+
 `withHttpOnlyFalse` is what lets the browser read `XSRF-TOKEN` for the sign-out request in Task 5; without it, logout gets a 403 that looks like a session problem.
+
+- [ ] **Step 4b: Write the auth-check endpoint**
+
+Create `src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/AuthCheckController.kt`:
+
+```kotlin
+/*----------------------
+ | AuthCheckController.kt
+ | Description: The endpoint nginx subrequests to decide whether a websocket upgrade carries a signed-in session.
+ | Author: suinevere
+ | Dependencies: spring-boot-starter-webflux
+ | Globals: N/A
+ ----------------------*/
+package org.suinevere.site.terminal.suinevere_site_terminal.security
+
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.web.bind.annotation.RestController
+
+@RestController
+class AuthCheckController {
+
+	/*----------------------
+	 | authCheck
+	 | Description: Returns an empty success once the filter chain has proved the caller is signed in.
+	 | Author: suinevere
+	 | Dependencies: N/A
+	 | Globals: N/A
+	 | Params: N/A
+	 | Returns: N/A -- the 204 status is the whole answer
+	 ----------------------*/
+	@GetMapping("/_authcheck")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	fun authCheck() {
+	}
+}
+```
+
+The body is empty on purpose: reaching this method at all is the proof, because an unauthenticated request is rejected by the filter chain before it arrives.
 
 - [ ] **Step 5: Add the application configuration**
 
@@ -690,7 +777,7 @@ server:
   forward-headers-strategy: framework
 ```
 
-If Task 2's finding says the RSocket endpoint did **not** move under the base path, also set `spring.rsocket.server.mapping-path: /zork/rsocket`. If it did move, leave `mapping-path: /rsocket` — setting both would produce `/zork/zork/rsocket`.
+**Leave `spring.rsocket.server.mapping-path` at its existing `/rsocket`.** Task 2 measured that base-path does not reach the RSocket endpoint, and Task 6 maps the external `/zork/rsocket` onto the internal `/rsocket` in nginx. Changing `mapping-path` here as well would double the prefix.
 
 The absolute `redirect-uri` is deliberate: behind the Worker, Spring sees `Host: terminal.suin.uk` and would otherwise build a callback Google rejects with `redirect_uri_mismatch`, a failure that presents as a Console misconfiguration and is not one.
 
@@ -700,11 +787,20 @@ The absolute `redirect-uri` is deliberate: behind the Worker, Spring sees `Host:
 ./gradlew test --tests '*SecurityConfigTest*'
 ```
 
-Expected: PASS, four tests.
+Expected: PASS, six tests.
 
 - [ ] **Step 7: Verify each test actually tests something**
 
-Delete `.formLogin { it.disable() }` and re-run: `there is no form login page` must FAIL. Restore it. Delete `.httpBasic { it.disable() }` and re-run: `basic authentication is not offered` must FAIL. Restore it. Delete `.authorizeExchange { ... }` and re-run: `an anonymous visitor is sent to google` must FAIL. Restore it.
+Remove one feature at a time, re-run, confirm the named test FAILS, then restore it:
+
+| Remove | Test that must fail |
+|---|---|
+| `.formLogin { it.disable() }` | `there is no form login page` |
+| `.httpBasic { it.disable() }` | `basic authentication is not offered` |
+| `.authorizeExchange { ... }` from the `@Order(2)` chain | `an anonymous visitor is sent to google` |
+| the whole `authCheckFilterChain` bean | `the auth check endpoint answers 401 and never a redirect` |
+
+The last one is the most important of the four. If that test still passes with the chain deleted, it is asserting nothing — and nginx will get a 302, answer 500, and refuse every WebSocket while looking like a server fault.
 
 This step is not optional. Three tests in this repo previously passed with their feature deleted.
 
@@ -713,8 +809,9 @@ This step is not optional. Three tests in this repo previously passed with their
 ```bash
 git add build.gradle.kts src/main/resources/application.yaml \
         src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/SecurityConfig.kt \
+        src/main/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/AuthCheckController.kt \
         src/test/kotlin/org/suinevere/site/terminal/suinevere_site_terminal/security/SecurityConfigTest.kt
-git commit -m "Require a Google sign-in for the terminal and refuse form and basic credentials"
+git commit -m "Require a Google sign-in for the terminal and answer the nginx auth check with a status rather than a redirect"
 ```
 
 ---
@@ -845,10 +942,13 @@ In `frontend/vite.config.ts`, add `base: '/zork/',` immediately after `plugins: 
       '/zork/rsocket': {
         target: 'ws://localhost:8080',
         ws: true,
+        rewrite: (path) => path.replace(/^\/zork/, ''),
       },
     },
   },
 ```
+
+The `rewrite` is required because **Spring serves the WebSocket at `/rsocket`, not `/zork/rsocket`** — Task 2 measured that `spring.webflux.base-path` does not reach the RSocket endpoint. In production nginx performs this same mapping; in dev there is no nginx, so Vite must do it. Without the rewrite the dev server proxies to a path Spring does not serve and the terminal silently fails to connect while the page loads fine.
 
 Without `base`, assets are requested from `/assets/*` and 404 through the Worker while the page itself loads — a failure that looks like a Worker bug.
 
@@ -1000,10 +1100,12 @@ git commit -m "Add a sign-out control that ends the Google session"
 - Modify: `docker/nginx/terminal.suin.uk.conf`
 
 **Interfaces:**
-- Consumes: the RSocket path recorded in Task 2.
-- Produces: an nginx vhost that rejects cross-origin WebSocket upgrades and forwards `X-Forwarded-Host` for Spring.
+- Consumes: `GET /zork/_authcheck` from Task 3 — 204 authenticated, 401 otherwise.
+- Produces: an nginx vhost that authenticates the WebSocket upgrade, rejects cross-origin upgrades, maps the external `/zork/rsocket` onto Spring's internal `/rsocket`, and forwards `X-Forwarded-Host`.
 
-Browsers do not apply CORS to WebSockets, so a cookie-authenticated `/zork/rsocket` is cross-origin openable: any page could connect carrying a visitor's cookie and play as them. The stakes are low; the fix is one `map`. This is the one genuinely new attack surface OAuth introduces.
+**This task is what actually protects the WebSocket.** Task 2 measured that Spring Security does not cover the RSocket endpoint: unauthenticated, `/rsocket` returns 101 while `/zork/` returns 401. Task 3 alone therefore ships a login page in front of an open socket. Both must land before the app is exposed.
+
+Two distinct checks live here and neither substitutes for the other. `auth_request` answers *is this visitor signed in*. The `Origin` map answers *is this page entitled to use their session* — browsers do not apply CORS to WebSockets, so a cookie-authenticated upgrade is cross-origin openable by any page.
 
 - [ ] **Step 1: Add the origin map**
 
@@ -1023,12 +1125,26 @@ map $http_origin $rsocket_origin_ok {
 In the `listen 443` server block, replace the `location /rsocket { ... }` block with:
 
 ```nginx
-    location /zork/rsocket {
+    # Spring Security does not filter the RSocket endpoint, so the upgrade is
+    # authenticated here or nowhere.
+    location = /_authcheck_internal {
+        internal;
+        proxy_pass http://127.0.0.1:8080/zork/_authcheck;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+    }
+
+    location = /zork/rsocket {
         if ($rsocket_origin_ok = 0) {
             return 403;
         }
 
-        proxy_pass http://127.0.0.1:8080;
+        auth_request /_authcheck_internal;
+
+        # Spring serves the socket at /rsocket; base-path does not reach it.
+        proxy_pass http://127.0.0.1:8080/rsocket;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -1041,7 +1157,20 @@ In the `listen 443` server block, replace the `location /rsocket { ... }` block 
     }
 ```
 
-Use the path Task 2 recorded. This block must stay declared ahead of the catch-all `location /`, which is the reason it exists separately.
+Four details that will each break this quietly if changed:
+
+- **`internal;`** keeps `/_authcheck_internal` unreachable from outside — without it the endpoint is directly fetchable.
+- **`proxy_set_header Cookie $http_cookie;`** forwards the session to the subrequest. Omit it and every upgrade is denied, because Spring sees an anonymous request.
+- **`proxy_pass http://127.0.0.1:8080/rsocket;`** carries a URI part, which is what replaces the matched location — that is the mapping from external `/zork/rsocket` to Spring's `/rsocket`. Dropping the `/rsocket` suffix would forward the original path and 404.
+- **`location =`** is an exact match, matching how the browser connects, and it must stay declared ahead of the catch-all `location /`.
+
+- [ ] **Step 2b: Confirm the auth_request module is present**
+
+```bash
+nginx -V 2>&1 | tr ' ' '\n' | grep auth_request
+```
+
+Expected: `--with-http_auth_request_module`. It is standard on Ubuntu's nginx. If it is absent, stop — the config will fail `nginx -t` with "unknown directive", and report it rather than working around it.
 
 - [ ] **Step 3: Forward the Worker's host header on the catch-all**
 
@@ -1293,20 +1422,35 @@ Expected: a `302` toward Google for the first, `301` for the other two.
 
 In a browser, open `https://suin.uk/zork`, complete Google sign-in, confirm the terminal connects and the game responds. Confirm the URL bar still reads `suin.uk/zork`.
 
-- [ ] **Step 10: Verify the origin guard**
+- [ ] **Step 10: Verify both WebSocket guards, unauthenticated**
 
-From a different origin's console — or with an explicit header:
+This is the step that proves the Branch B hole is actually closed. Run all three.
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' \
+UP='-H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13"
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="'
+
+# a) no session, correct origin  -> auth_request must deny
+curl -sS -o /dev/null -w 'no-session: %{http_code}\n' \
   -H "Connection: Upgrade" -H "Upgrade: websocket" \
-  -H "Sec-WebSocket-Version: 13" \
-  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+  -H "Origin: https://suin.uk" \
+  https://suin.uk/zork/rsocket
+
+# b) no session, hostile origin  -> origin map must deny
+curl -sS -o /dev/null -w 'bad-origin: %{http_code}\n' \
+  -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   -H "Origin: https://evil.example" \
-  https://terminal.suin.uk/zork/rsocket
+  https://suin.uk/zork/rsocket
+
+# c) the internal endpoint must not be reachable from outside
+curl -sS -o /dev/null -w 'internal: %{http_code}\n' https://suin.uk/_authcheck_internal
 ```
 
-Expected: `403`.
+Expected: **(a) 401, (b) 403, (c) 404.**
+
+**A `101` on (a) means the hole is still open — stop and do not announce the deployment.** A `500` on (a) means `/zork/_authcheck` answered with a redirect instead of a status, so the `@Order(1)` filter chain is not matching; check it before touching nginx.
 
 - [ ] **Step 11: Remove any temporary redirect URI**
 
