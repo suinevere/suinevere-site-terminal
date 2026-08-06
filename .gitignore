@@ -45,3 +45,6 @@ frontend/dist/
 
 ### Embedded upstream project (its own git repo) ###
 Netlink/
+
+### Deployment secrets (never committed) ###
+docker/.env

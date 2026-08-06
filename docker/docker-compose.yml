@@ -53,6 +53,50 @@ services:
         max-size: 10m
         max-file: "3"
 
+  authproxy:
+    build:
+      context: ../ops/authproxy
+      dockerfile: Dockerfile
+    image: suinevere-authproxy:latest
+    container_name: suinevere-authproxy
+    restart: unless-stopped
+    depends_on:
+      - multizork
+
+    # nginx on the host proxies port 23 here. Never published beyond loopback.
+    ports:
+      - "127.0.0.1:2322:2322"
+
+    environment:
+      AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET must be set in docker/.env}"
+      AUTH_MAGIC: "${AUTH_MAGIC:-AUTH}"
+      LISTEN_HOST: "0.0.0.0"
+      LISTEN_PORT: "2322"
+      UPSTREAM_HOST: "multizork"
+      UPSTREAM_PORT: "2323"
+      AUTH_TIMEOUT: "5.0"
+      MAX_CONN: "32"
+      IDLE_TIMEOUT: "1800"
+
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   terminal:
     # The context is the repo root because the jar is built from source; `.dockerignore`
     # lives there for the same reason, and has to stay there to apply.

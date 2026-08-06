@@ -41,7 +41,7 @@ All settings come from the environment. The secret is never baked into the image
 | `AUTH_MAGIC` | `AUTH` | Preamble marker, matches `auth_magic` in the Netlink config |
 | `LISTEN_HOST` | `0.0.0.0` | Bind address inside the container |
 | `LISTEN_PORT` | `2322` | Listener port |
-| `UPSTREAM_HOST` | `127.0.0.1` | Where `multizorkd` listens |
+| `UPSTREAM_HOST` | `127.0.0.1` | Where `multizorkd` listens. **In the compose stack this must be `multizork`** — inside a container `127.0.0.1` is the proxy's own loopback, not the game. |
 | `UPSTREAM_PORT` | `2323` | Upstream port |
 | `AUTH_TIMEOUT` | `5.0` | Seconds to wait for a complete preamble |
 | `MAX_CONN` | `32` | Concurrent authenticated relays |
