@@ -36,3 +36,16 @@ body,
   border-radius: 4px;
   cursor: pointer;
 }
+
+.sign-out {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  color: #8a8a8a;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
