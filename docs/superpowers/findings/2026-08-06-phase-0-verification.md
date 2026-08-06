@@ -1,3 +1,8 @@
+#####
+Everything verified, only reference if needing something or debugging.
+#####
+
+
 ubuntu@instance-20260709-0504:~$ curl -s ifconfig.me; echo
 163.192.218.124
 ubuntu@instance-20260709-0504:~$ systemctl list-timers | grep -i duck
@@ -110,3 +115,15 @@ listen [::]:80 default_server;
 
         # Keep ACME challenge local for Certbot verification
         location /.well-known/acme-challenge/ {
+
+::ffff:172.18.0.1
+
+https://suinevere.duckdns.org
+
+(version 0.0.9 built Aug  6 2026 23:34:15.)
+
+
+Hello sailor!
+
+If you are returning, go ahead and type in your access code.
+Otherwise, just press enter.
