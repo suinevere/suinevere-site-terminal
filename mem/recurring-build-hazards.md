@@ -11,9 +11,12 @@ described, not by reading.
 ## The NUL escape
 
 Writing a backslash-u-0000 escape through the editing tools silently produces a **raw NUL
-byte** instead of the six-character escape. It has happened five times: twice in the plan
+byte** instead of the six-character escape. It has happened six times: three times in a plan
 document, once in `terminalSession.ts`, once in a memory file, and once in a file whose only
-purpose was documenting the hazard.
+purpose was documenting the hazard. The sixth was the constraint line of
+`docs/superpowers/plans/2026-08-06-oracle-deployment.md` warning about this hazard, which
+then could not be repaired with an ordinary edit because the search text no longer matched
+the bytes on disk. Deleting the line and rewriting it was the fix.
 
 A raw NUL makes the file binary, so `grep` reports "Binary file matches" and refuses to show
 content, while visual diffs look perfect. In Kotlin or TypeScript source the mangled literal
@@ -27,6 +30,11 @@ t=$(wc -c < f); s=$(tr -d '\000' < f | wc -c); echo $((t-s))   # must print 0
 
 `tr -d '\000'` strips the byte for repair; a normal edit then fixes the surrounding text.
 Prefer describing the character in prose over embedding it.
+
+**Two obvious checks are worthless here and will mislead you.** `grep -c` counts matching
+*lines*, not bytes, so it cannot tell one NUL from a thousand. Worse, bash cannot hold a NUL
+in a variable, so `grep -c $'\x00' f` degrades to `grep -c ''` and reports **every line in
+the file** — a confident, precise, entirely fabricated number. Only `tr` counts bytes.
 
 ## Node globals in the browser bundle
 
