@@ -10,6 +10,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  base: '/zork/',
   define: {
     global: 'globalThis',
   },
@@ -24,9 +25,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/rsocket': {
+      '/zork/rsocket': {
         target: 'ws://localhost:8080',
         ws: true,
+        rewrite: (path) => path.replace(/^\/zork/, ''),
       },
     },
   },

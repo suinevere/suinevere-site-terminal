@@ -11,20 +11,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { createLineEditor } from '../terminal/lineEditor'
 import { openTerminalSession, type TerminalSession } from '../rsocket/terminalSession'
-
-/*----------------------
- | sessionUrl
- | Description: Resolves the RSocket endpoint from the page origin so dev and production both work.
- | Author: suinevere
- | Dependencies: N/A
- | Globals: N/A
- | Params: N/A
- | Returns: WebSocket URL for the RSocket mapping path
- ----------------------*/
-function sessionUrl(): string {
-  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${window.location.host}/rsocket`
-}
+import { sessionUrl } from '../rsocket/sessionUrl'
 
 /*----------------------
  | Terminal
@@ -72,7 +59,7 @@ export default function Terminal() {
     setLive(true)
 
     openTerminalSession({
-      url: sessionUrl(),
+      url: sessionUrl(window.location, import.meta.env.BASE_URL),
       onData: (text) => term.write(text),
       onClose: () => {
         session = null
