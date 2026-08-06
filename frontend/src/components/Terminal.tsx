@@ -2,7 +2,7 @@
  | Terminal.tsx
  | Description: Mounts XTerm.js, wires local line editing to the RSocket session, and surfaces connection state.
  | Author: suinevere
- | Dependencies: @xterm/xterm, @xterm/addon-fit, react, lineEditor, terminalSession
+ | Dependencies: @xterm/xterm, @xterm/addon-fit, react, lineEditor, terminalSession, sessionUrl
  | Globals: N/A
  ----------------------*/
 import { useEffect, useRef, useState } from 'react'
@@ -17,7 +17,7 @@ import { sessionUrl } from '../rsocket/sessionUrl'
  | Terminal
  | Description: Renders the browser terminal for one upstream session.
  | Author: suinevere
- | Dependencies: XTerm, FitAddon, createLineEditor, openTerminalSession
+ | Dependencies: XTerm, FitAddon, createLineEditor, openTerminalSession, sessionUrl
  | Globals: N/A
  | Params: N/A
  | Returns: React element containing the terminal surface and a Reconnect control
