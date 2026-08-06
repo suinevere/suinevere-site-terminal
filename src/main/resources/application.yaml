@@ -5,6 +5,20 @@ spring:
     server:
       transport: websocket
       mapping-path: /rsocket
+  webflux:
+    base-path: /zork
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: [openid, profile, email]
+            redirect-uri: https://suin.uk/zork/login/oauth2/code/google
+
+server:
+  forward-headers-strategy: framework
 
 terminal:
   upstream:
