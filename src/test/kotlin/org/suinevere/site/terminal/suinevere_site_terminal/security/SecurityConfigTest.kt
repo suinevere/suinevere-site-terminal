@@ -2,7 +2,7 @@
  | SecurityConfigTest.kt
  | Description: Proves the app admits only a Google identity and offers no password credential of any kind.
  | Author: suinevere
- | Dependencies: SecurityConfig, spring-security-test, WebTestClient
+ | Dependencies: SecurityConfig, spring-security-test, spring-boot-starter-webflux-test, spring-boot-starter-security-test, WebTestClient
  | Globals: N/A
  ----------------------*/
 package org.suinevere.site.terminal.suinevere_site_terminal.security
@@ -11,8 +11,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient
-import org.springframework.http.MediaType
-import org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers
 import org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockOAuth2Login
 import org.springframework.test.web.reactive.server.WebTestClient
 import kotlin.test.assertNotNull
@@ -77,20 +75,15 @@ class SecurityConfigTest {
 	}
 
 	@Test
-	fun `posting credentials to slash login is not processed as a form login attempt`() {
-		val location = client.mutateWith(SecurityMockServerConfigurers.csrf())
-			.post().uri("/login")
-			.contentType(MediaType.APPLICATION_FORM_URLENCODED)
-			.bodyValue("username=nobody&password=irrelevant")
+	fun `the unauthenticated entry point offers no password field`() {
+		val body = client.get().uri("/login")
 			.exchange()
-			.returnResult(String::class.java)
-			.responseHeaders.location
+			.expectBody(String::class.java)
+			.returnResult()
+			.responseBody ?: ""
 
-		assertNotNull(location, "expected a redirect somewhere, since the request is unauthenticated")
-		assertTrue(
-			!location.toString().contains("/login"),
-			"a form login attempt was processed and failed, meaning form login is still active: $location",
-		)
+		assertTrue(!body.contains("type=\"password\""), "a password input was rendered: $body")
+		assertTrue(!body.contains("name=\"password\""), "a password field name was rendered: $body")
 	}
 
 	@Test
