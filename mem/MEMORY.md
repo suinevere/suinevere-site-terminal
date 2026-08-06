@@ -2,3 +2,4 @@
 - [Recurring build hazards](recurring-build-hazards.md) — the NUL escape and the missing browser `Buffer`; both invisible to normal review.
 - [Suinevere server hardening](suinevere-server-hardening.md) — attack surface, why the Saturn tunnel needs no carve-out, and the state of each measure.
 - [Handoff 2026-08-05: server hardening](2026-08-05-handoff-server-hardening.md) — terminal shipped on an unmerged branch, three decisions open.
+- [Oracle deployment decisions 2026-08-06](2026-08-06-oracle-deployment-decisions.md) — doorman gate, Google OAuth, Worker at suin.uk/zork; closes two of those three.

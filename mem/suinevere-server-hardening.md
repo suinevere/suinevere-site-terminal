@@ -32,11 +32,11 @@ There is no way to gate one without the other.
 - **Docker bypasses ufw** — Docker writes iptables rules evaluated before ufw's, so a
   published container port stays reachable regardless of ufw. Mitigated by binding the
   container to loopback and fronting it with nginx `stream`.
-- **`multizorkd` built with a bare `gcc -O2`** — an internet-facing hand-written C parser
-  with no explicit hardening flags. **Not yet applied.** Adding `-D_FORTIFY_SOURCE=2`,
-  `-Wl,-z,relro,-z,now`, `-fstack-clash-protection` and `-fcf-protection=full` does more
-  than every container flag combined. `-Wall -Wextra` on a parser never compiled with them
-  is worth reading once.
+- **`multizorkd` hardening flags** — **applied** in `docker/multizork/Dockerfile`:
+  `-D_FORTIFY_SOURCE=2`, `-Wl,-z,relro,-z,now`, `-fstack-clash-protection`,
+  `-Werror=format-security`, `-Wall -Wextra`, and control-flow protection selected by
+  architecture because Oracle's free tier is ARM as often as x86. This does more than every
+  container flag combined.
 - **Container runs non-root already** — `USER multizork`, uid 1000, `/data` owned correctly.
 - **nginx `limit_conn mud 3`** is live and valuable on its own: three connections per IP,
   enforced before anything reaches the C parser.
