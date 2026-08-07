@@ -76,7 +76,7 @@ characteristic failure is a correct file in `streams-enabled/` that `nginx.conf`
 includes at top level: nginx starts clean and nothing serves 23.
 
 **0.5 Stack health.** `docker compose ps` and `docker compose logs --tail=50` in
-`/opt/suinevere-site-terminal/docker/`.
+the stack checkout's `docker/` directory.
 
 **0.6 End to end.** `printf 'q\r\n' | timeout 8 nc suinevere.duckdns.org 23` → expect the
 banner. "Connect OK then zero bytes" is ambiguous between a gate rejection and nothing

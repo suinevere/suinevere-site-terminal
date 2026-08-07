@@ -122,7 +122,7 @@ Expected: the `stream` server appears in the dumped config. A correct file in `s
 - [ ] **Step 5: Stack health**
 
 ```bash
-cd /opt/suinevere-site-terminal/docker
+cd "$STACK/docker"
 docker compose ps
 docker compose logs --tail=50
 ```
@@ -341,7 +341,7 @@ a different container name. Do not let `docker compose` discover this for you mi
 - [ ] **Step 1: Generate the secret**
 
 ```bash
-cd /opt/suinevere-site-terminal/docker
+cd "$STACK/docker"
 umask 077
 printf 'AUTH_SECRET=%s\n' "$(openssl rand -hex 16)" > .env
 chmod 600 .env
@@ -1453,7 +1453,7 @@ sudo nginx -t && sudo systemctl reload nginx
 Create the OAuth client in the Google Cloud Console with the values from `ops/cloudflare/README.md`, then on the box:
 
 ```bash
-cd /opt/suinevere-site-terminal/docker
+cd "$STACK/docker"
 umask 077
 printf 'GOOGLE_CLIENT_ID=%s\nGOOGLE_CLIENT_SECRET=%s\n' "<id>" "<secret>" >> .env
 chmod 600 .env

@@ -27,13 +27,14 @@ sudo apt-get install -y docker.io docker-compose-v2 git libnginx-mod-stream
 sudo usermod -aG docker "$USER"     # log out and back in for this to take effect
 ```
 
-Then clone and bring it up:
+Then clone and bring it up. Nothing depends on a particular location — pick one and keep it
+in `$STACK` for the rest of this guide:
 
 ```bash
-sudo git clone -b rsocket-terminal \
-  https://github.com/suinevere/suinevere-site-terminal.git /opt/suinevere-site-terminal
-sudo chown -R "$USER:$USER" /opt/suinevere-site-terminal
-cd /opt/suinevere-site-terminal/docker
+STACK=~/docker/suinevere-site-terminal
+git clone -b rsocket-terminal \
+  https://github.com/suinevere/suinevere-site-terminal.git "$STACK"
+cd "$STACK/docker"
 docker compose build
 docker compose up -d
 ```
@@ -41,10 +42,17 @@ docker compose up -d
 `rsocket-terminal` is deliberate — the branch is not merged to master yet. Drop the `-b` once
 it is. If the repo is private, use the SSH remote with a deploy key instead of HTTPS.
 
+If you have forgotten where an existing install lives:
+
+```bash
+STACK=$(dirname "$(dirname "$(find ~ / -name docker-compose.yml -path '*suinevere*' 2>/dev/null | head -1)")")
+echo "$STACK"
+```
+
 Updating later is the same three commands:
 
 ```bash
-cd /opt/suinevere-site-terminal && git pull && cd docker
+cd "$STACK" && git pull && cd docker
 docker compose build && docker compose up -d
 ```
 
@@ -109,7 +117,7 @@ should be seconds.
 ```bash
 sudo nginx -t                                     # does not bind
 cd /path/to/zaturn/docker && docker compose down  # frees 23 and the name   <- outage starts
-cd /opt/suinevere-site-terminal/docker
+cd "$STACK/docker"
 docker compose build
 docker compose up -d
 sudo systemctl reload nginx                       # binds 23                <- outage ends
