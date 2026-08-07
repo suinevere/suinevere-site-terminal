@@ -1527,6 +1527,26 @@ Expected: **(a) 401, (b) 403, (c) 404.**
 
 **A `101` on (a) means the hole is still open — stop and do not announce the deployment.** A `500` on (a) means `/zork/_authcheck` answered with a redirect instead of a status, so the `@Order(1)` filter chain is not matching; check it before touching nginx.
 
+- [ ] **Step 10b: Confirm the Worker forwards the browser's Origin unmodified**
+
+The `Origin` guard in nginx is only as good as what actually arrives there. The Worker copies
+headers via `new Request(url, request)`, but that is worth confirming rather than assuming —
+if Cloudflare rewrites or drops `Origin`, every legitimate upgrade is refused with 403.
+
+Open `https://suin.uk/zork` in a browser, sign in, and confirm the terminal connects. Then on
+the box:
+
+```bash
+sudo tail -50 /var/log/nginx/access.log | grep rsocket
+```
+
+Expected: a `101` for your own session. A `403` there means the `Origin` did not survive the
+Worker; a `401` means `auth_request` denied it.
+
+**Note for scripted checks:** the `Origin` guard refuses any client that sends no `Origin`
+header at all, which includes plain `curl`, uptime probes and health checks. That is intended
+for this endpoint — but it means `/zork/rsocket` cannot be used as a liveness check.
+
 - [ ] **Step 11: Remove any temporary redirect URI**
 
 If a `terminal.suin.uk` redirect URI was added to the Google client for testing, delete it now.
