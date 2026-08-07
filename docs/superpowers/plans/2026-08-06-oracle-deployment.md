@@ -1495,7 +1495,7 @@ Expected: a `302` toward Google for the first, `301` for the other two.
 
 - [ ] **Step 9: Sign in for real**
 
-In a browser, open `https://suin.uk/zork`, complete Google sign-in, confirm the terminal connects and the game responds. Confirm the URL bar still reads `suin.uk/zork`.
+In a browser, open `https://suin.uk/zork/` (with the trailing slash), complete Google sign-in, confirm the terminal connects and the game responds. Confirm the URL bar still reads `suin.uk/zork/`. The trailing slash matters: `spring.webflux.base-path` combined with `oauth2Login` mishandles the slashless form (spring-projects/spring-security#8967), so the nginx redirect added in Task 6 normalises `/zork` to `/zork/` before it reaches Spring.
 
 - [ ] **Step 10: Verify both WebSocket guards, unauthenticated**
 
