@@ -296,6 +296,48 @@ git commit -m "Run the authproxy in the stack on loopback and keep its secret ou
 
 No step here is irreversible, and the cutover is an nginx *reload* — port 23 is never released.
 
+### What O1 changed about this task
+
+O1's findings (`docs/superpowers/findings/2026-08-06-phase-0-verification.md`) invalidated an
+assumption this task was originally written on. Read this before Step 1.
+
+**The box's live nginx stream config is not the repo's file.** The deployed block reads
+`proxy_timeout 10m;` plus a `proxy_connect_timeout 5s;` that the repo's
+`docker/nginx/stream-multizork.conf` does not contain, and the repo's file specifies
+`proxy_timeout 1h;`. Editing the repo file on the box will therefore change nothing.
+Step 6 below has been rewritten to locate and edit the **live** file.
+
+The `1h` in the repo was deliberate — a Saturn sitting at a prompt sends nothing, and the
+memo records that a short timeout drops it mid-game. **The live `10m` is a latent
+session-drop bug**, independent of this deployment. Fix it during the cutover.
+
+**Only `multizork` is running on the box; nothing listens on 8080.** The terminal bridge has
+never been deployed there. Combined with the previous session's note that a *pre-existing
+standalone* `multizork` container is still running, `docker compose up` may hit a container
+name conflict. Step 1a checks for that before anything else.
+
+**There is no host firewall.** `iptables -S INPUT` is `-P INPUT ACCEPT` with no rules and ufw
+is inactive, so the Oracle Cloud Security List is the *only* network boundary. Nothing here
+depends on that, but it means the loopback-only publishing in `docker-compose.yml` is now
+load-bearing rather than defence in depth — a `0.0.0.0` publish would be immediately public.
+
+**No DuckDNS updater is visible on the box.** `systemctl list-timers` shows none and
+`crontab` is not installed. The A record currently resolves, so something is updating it or
+the IP has not moved since it was set by hand. Worth resolving separately; it is not a
+blocker for this task, but if the Oracle IP ever changes, both the Saturn and the terminal
+break with no warning.
+
+- [ ] **Step 1a: Check for a container name conflict before touching anything**
+
+```bash
+docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | grep -i multizork
+```
+
+If a standalone `multizork` container exists outside the compose stack, `docker compose up`
+will fail on the name. Decide deliberately whether to stop and remove it — it is the
+container currently serving the game, so removing it is an outage — or to run the stack under
+a different container name. Do not let `docker compose` discover this for you mid-cutover.
+
 - [ ] **Step 1: Generate the secret**
 
 ```bash
@@ -359,16 +401,35 @@ Removing `handler = transparent` selects `netlink_standard_server`. Restart the 
 
 Expected: the game, over a real modem session. **The two handlers have different relay implementations — a passing `nc` test in Step 4 does not imply a working modem session, which is the entire reason this step exists.** If it fails, `docker compose logs -f authproxy` on the box during the dial.
 
-- [ ] **Step 6: Cut over**
+- [ ] **Step 6: Cut over — on the LIVE config, not the repo copy**
 
-On the box, in `docker/nginx/stream-multizork.conf`, swap the two `proxy_pass` lines so the active one is `127.0.0.1:2322`, then:
+Find the file nginx actually loads. It is not the repo's copy:
+
+```bash
+grep -rl 'listen 23' /etc/nginx/ 2>/dev/null
+```
+
+Edit **that** file: set the active `proxy_pass` to `127.0.0.1:2322`, and while you are in
+there raise `proxy_timeout` from the live `10m` to `1h` — the repo's value, chosen because a
+Saturn idling at a prompt sends nothing and gets dropped. Then:
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Expected: `test is successful`, then a clean reload. A reload, not a restart — nginx keeps holding port 23 throughout, so there is no outage. Rollback is swapping the lines back and reloading again.
+Expected: `test is successful`, then a clean reload. A reload, not a restart — nginx keeps holding port 23 throughout, so there is no outage. Rollback is putting the old `proxy_pass` line back and reloading again.
+
+- [ ] **Step 6b: Reconcile the repo with the box**
+
+The live file and `docker/nginx/stream-multizork.conf` had drifted before this task; leaving
+them drifted guarantees the next person edits the wrong one. Copy the now-correct live
+content into the repo file, keeping the repo's header block, and commit it:
+
+```bash
+git add docker/nginx/stream-multizork.conf
+git commit -m "Match the stream config in the repository to the one the server actually loads"
+```
 
 - [ ] **Step 7: Confirm the public path**
 
@@ -1364,6 +1425,20 @@ On the box:
 sudo certbot certonly --webroot -w /var/www/html -d terminal.suin.uk
 sudo certbot certificates | grep -A3 terminal.suin.uk
 ```
+
+- [ ] **Step 2b: Confirm the box's nginx has the auth_request module**
+
+O1 recorded nginx **1.18.0** on the box — older than the version Task 6 was validated
+against, and only an Alpine image was checked locally.
+
+```bash
+nginx -V 2>&1 | tr ' ' '\n' | grep auth_request
+```
+
+Expected: `--with-http_auth_request_module`. **If it is absent, stop.** `nginx -t` will fail
+with "unknown directive auth_request", and without that directive there is nothing
+authenticating the WebSocket — do not deploy the vhost and report back instead of working
+around it.
 
 - [ ] **Step 3: Install the vhost and close the port-80 downgrade**
 
