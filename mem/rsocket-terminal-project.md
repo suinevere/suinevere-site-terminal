@@ -59,6 +59,37 @@ The only thing standing between `/rsocket` and the internet today is that the co
 publishes `127.0.0.1:8080` and nothing proxies that path yet. Full measurement in
 `docs/superpowers/findings/2026-08-06-rsocket-binding-spike.md`.
 
+### Why, from the source rather than the symptom
+
+`RSocketWebSocketNettyRouteProvider.apply()` in `spring-boot-rsocket-4.1.0` ends with
+`httpServerRoutes.ws(this.mappingPath, ...)` — the endpoint is registered on **reactor-netty's
+`HttpServerRoutes`**, at the transport layer. `WebFilter`s and `ContextPathCompositeHandler`
+both live inside the `HttpHandler`, which is a *sibling* route. Nothing in the Spring web
+stack is in that path. This is design, not misconfiguration.
+
+### The Spring-native fix does exist and is mostly autoconfigured
+
+`spring-boot-security-4.1.0` ships
+`org.springframework.boot.security.autoconfigure.rsocket.RSocketSecurityAutoConfiguration`,
+gated `@ConditionalOnClass({ RSocketServerCustomizer, SecuritySocketAcceptorInterceptor })`.
+It contributes an `RSocketServerCustomizer` that installs the interceptor via
+`server.interceptors(registry -> registry.forSocketAcceptor(interceptor))` — and the route
+provider above **does** apply `RSocketServerCustomizer` beans before creating the route. So
+it works with the websocket transport, not just a standalone RSocket port.
+
+Only `spring-security-rsocket` is missing from the classpath;
+`spring-boot-security` is already there transitively via `spring-boot-starter-oauth2-client`.
+
+**The catch:** `SecuritySocketAcceptorInterceptor` authenticates from the **RSocket SETUP
+frame metadata**, while the browser's session cookie rides the **WebSocket handshake**.
+Different layers — the cookie cannot be reused. Adopting this means minting a short-lived
+token from an authenticated HTTP endpoint and putting it in SETUP metadata, which lands on
+the frontend reconnect path.
+
+Spring Security's servlet WebSocket page describes the same principle for STOMP: messaging
+security is an interceptor at the message layer, never the filter chain. That page does not
+apply to WebFlux or RSocket, but its reasoning transfers exactly.
+
 ## Charset contract
 
 **ISO-8859-1 on the TCP leg only.** TCP splits reads at arbitrary byte boundaries, and
