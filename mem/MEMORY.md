@@ -3,3 +3,4 @@
 - [Suinevere server hardening](suinevere-server-hardening.md) — attack surface, why the Saturn tunnel needs no carve-out, and the state of each measure.
 - [Handoff 2026-08-05: server hardening](2026-08-05-handoff-server-hardening.md) — terminal shipped on an unmerged branch, three decisions open.
 - [Oracle deployment decisions 2026-08-06](2026-08-06-oracle-deployment-decisions.md) — doorman gate, Google OAuth, Worker at suin.uk/zork; closes two of those three.
+- [Handoff 2026-08-06: Oracle deployment](2026-08-06-handoff-oracle-deployment.md) — branch built and reviewed end to end; only the operator tasks remain. **Start here.**

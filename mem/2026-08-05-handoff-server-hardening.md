@@ -5,6 +5,11 @@ metadata:
   type: project
 ---
 
+> **Largely superseded by [[2026-08-06-handoff-oracle-deployment]].** Decisions 1 and 2 below
+> are closed; decision 3, the merge, is still open. The claim that gcc hardening flags are
+> unapplied was already stale and is corrected in [[suinevere-server-hardening]]. Read the
+> newer handoff first and treat this one as history.
+
 Continues work on the browser terminal and the hardening of the box it talks to.
 
 ## Where things stand
