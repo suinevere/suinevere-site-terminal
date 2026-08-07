@@ -15,17 +15,26 @@ and Cloudflare's free plan does not proxy raw TCP.
 
 ## Worker
 
-Deploy `worker.js`, bound to route `suin.uk/zork*`.
+In the Cloudflare dashboard: **Workers & Pages → Create → Workers → deploy `worker.js`**,
+then open the Worker's **Settings → Triggers → Routes → Add route** and bind it to
+`suin.uk/zork*` against the `suin.uk` zone.
 
 ## Redirect Rules
 
+Dashboard path: **suin.uk zone → Rules → Redirect Rules → Create rule**. For each row
+below, set the rule to match **"URI Path"** with operator **"equals"** against the match
+value shown (not the "URI Full" hostname field), and the target to a **Static URL**, 301,
+with **"Preserve query string"** off.
+
 | Match | Action |
 |---|---|
-| `suin.uk/z` | 301 → `https://suin.uk/zork` |
-| `suin.uk/zaturn` | 301 → `https://suin.uk/zork` |
+| `/z` | 301 → `https://suin.uk/zork/` |
+| `/zaturn` | 301 → `https://suin.uk/zork/` |
 
 These are Redirect Rules rather than extra Worker routes: a `suin.uk/z*` route would
-also capture `/zebra`.
+also capture `/zebra`. The targets carry a trailing slash because `spring.webflux.base-path`
+plus `oauth2Login` mishandles the slashless form (spring-projects/spring-security#8967);
+nginx also normalises this at the origin, so the Worker route itself needs no change.
 
 ## HTTPS
 
