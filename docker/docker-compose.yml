@@ -121,6 +121,10 @@ services:
       TERMINAL_UPSTREAM_PORT: "${TERMINAL_UPSTREAM_PORT:-2323}"
       TERMINAL_UPSTREAM_MAXSESSIONS: "${TERMINAL_UPSTREAM_MAXSESSIONS:-32}"
 
+      # application.yaml resolves these; the container will not start without them.
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set in docker/.env}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET must be set in docker/.env}"
+
     read_only: true
     tmpfs:
       - /tmp
