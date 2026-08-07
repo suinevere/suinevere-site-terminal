@@ -129,12 +129,14 @@ services:
     cap_drop:
       - ALL
 
+    # spring.webflux.base-path moved the whole app off root, so / now 404s; /zork/_authcheck
+    # answers 401 unauthenticated by design, which proves both liveness and that security is wired.
     healthcheck:
       test:
         - CMD
         - bash
         - -c
-        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET / HTTP/1.0\r\n\r\n" >&3 && head -1 <&3 | grep -q " 200 "'
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /zork/_authcheck HTTP/1.0\r\n\r\n" >&3 && head -1 <&3 | grep -q " 401 "'
       interval: 30s
       timeout: 5s
       start_period: 60s
