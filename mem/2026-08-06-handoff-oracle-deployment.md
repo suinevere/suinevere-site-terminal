@@ -82,6 +82,20 @@ checks for the `auth_request` module with an explicit stop condition.
 - **A subagent dispatch was blocked by the permission classifier.** A plainer prompt got
   through. Simplify rather than abandoning independent review.
 
+## A slow-test regression this branch introduced
+
+The Kotlin suite went from seconds to **2m22s**. `BasePathAuthCheckTest` runs at
+`RANDOM_PORT`, and its Spring context logs *"Graceful shutdown aborted with one or more
+requests still active"* five times, each after a **30-second** `webServerGracefulShutdown`
+timeout — roughly 150 of those 142 seconds. Something in the real-server tests is not
+releasing its connection.
+
+The tests pass and the result is correct, so this is not a defect in the code under test. But
+a two-and-a-half-minute suite gets run less often, and the real-server tests are exactly the
+ones that caught the base-path blind spot. Worth chasing: likely a `WebTestClient` connection
+left open, or `spring.lifecycle.timeout-per-shutdown-phase` wanting a shorter value in the
+test profile.
+
 ## Open
 
 1. **Merge `rsocket-terminal`.** Still unanswered from the previous handoff. Use
