@@ -331,7 +331,8 @@ page works normally.
 **3.4 Aliases.** `/z` and `/zaturn` are Cloudflare **Redirect Rules** (301 → `/zork`), not
 Worker routes. A `suin.uk/z*` route would also capture `/zebra`.
 
-**3.5 HTTPS only.** Cloudflare *Always Use HTTPS* upgrades :80 → :443 at the edge, so the
+**3.5 HTTPS scoping.** Zone-wide *Always Use HTTPS* is NOT used — the zone serves
+HTTP-only content at `/0`. Superseded text follows: Cloudflare *Always Use HTTPS* upgrades :80 → :443 at the edge, so the
 Worker never receives a cleartext request and nothing is proxied in plaintext. Separately,
 change the box's port-80 vhost to `301 https://suin.uk`, closing the downgrade recorded in
 `mem/suinevere-server-hardening.md`.

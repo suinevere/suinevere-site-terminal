@@ -1369,8 +1369,12 @@ also capture `/zebra`.
 
 ## HTTPS
 
-Enable **Always Use HTTPS** on the zone. The Worker then never receives a cleartext
-request, and nothing is proxied in plaintext.
+**Do not enable zone-wide *Always Use HTTPS*.** This zone serves HTTP-only content at
+`/0`, and that setting would upgrade it and break it.
+
+Scheme handling is per-path instead. Every Redirect Rule that targets an HTTPS
+destination must be scoped with `ssl`, so plain-HTTP requests fall through to the
+zone's existing `(not ssl)` rules rather than being force-upgraded.
 
 ## Google Cloud Console
 
@@ -1481,7 +1485,7 @@ Expected: `302`, with `Location` pointing at Google. A `200` here means `Securit
 
 - [ ] **Step 7: Deploy the Worker and the redirect rules**
 
-Deploy `ops/cloudflare/worker.js` on route `suin.uk/zork*`. Add the two Redirect Rules. Enable **Always Use HTTPS**.
+Deploy `ops/cloudflare/worker.js` on route `suin.uk/zork*`. Add the alias Redirect Rule, scoped with `ssl`. Leave zone-wide *Always Use HTTPS* OFF.
 
 - [ ] **Step 8: Verify the public path**
 
