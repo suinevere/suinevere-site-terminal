@@ -88,4 +88,21 @@ class BasePathAuthCheckTest {
 	fun `the base path without a trailing slash also redirects to the google login start`() {
 		assertRedirectsToGoogleLogin("/zork")
 	}
+
+	// The session cookie defaults to Path=/zork/, which RFC 6265 path-matching does not send
+	// to /zork. Sign-in then completed and the post-login redirect to /zork arrived with no
+	// cookie, bouncing the visitor back to Google and landing on /zork/login?error.
+	@Test
+	fun `the session cookie path has no trailing slash so it is sent to the base path itself`() {
+		val result = client.get().uri("/zork/oauth2/authorization/google")
+			.exchange()
+			.expectStatus().is3xxRedirection
+			.returnResult(Void::class.java)
+
+		val setCookie = result.responseHeaders["Set-Cookie"]?.firstOrNull { it.startsWith("SESSION=") }
+		assertTrue(setCookie != null, "no SESSION cookie was issued by the authorization endpoint")
+
+		val path = Regex("(?i)Path=([^;]+)").find(setCookie!!)?.groupValues?.get(1)
+		assertTrue(path == "/zork", "session cookie Path was '$path', expected '/zork'")
+	}
 }

@@ -19,6 +19,12 @@ spring:
 
 server:
   forward-headers-strategy: framework
+  reactive:
+    session:
+      cookie:
+        # Without this the cookie defaults to Path=/zork/, which RFC 6265 does not
+        # send to /zork, so the post-login redirect arrives unauthenticated.
+        path: /zork
 
 terminal:
   upstream:
